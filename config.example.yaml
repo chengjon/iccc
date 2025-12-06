@@ -1,0 +1,76 @@
+# iCCC Configuration Example
+#
+# Copy this file to config.yaml and customize as needed.
+# Environment variables can override these settings (see docs).
+
+# MongoDB Configuration
+mongodb:
+  uri: "mongodb://localhost:27017"
+  database: "iccc"
+  max_pool_size: 10
+  timeout_ms: 5000
+
+# Redis Configuration
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: null  # Set if Redis requires authentication
+  max_connections: 50
+
+# Anthropic API Configuration
+anthropic:
+  api_key: ""  # Required: Set your API key here or use ANTHROPIC_API_KEY env var
+  default_model: "claude-sonnet-4-20250514"
+  max_tokens: 8000
+  temperature: 1.0
+  enable_rate_limiting: true
+
+# Orchestration System
+orchestration:
+  max_concurrent_agents: 5  # Maximum number of agents running in parallel
+  task_timeout_seconds: 3600  # 1 hour default timeout
+  enable_quality_gates: true  # Run lint/test checks before completion
+  enable_adaptive_replanning: true  # Automatically adjust plans on failures
+  worktree_dir: ".worktrees"  # Directory for Git worktrees
+  enable_file_locking: true  # Use Redis file locks for conflict prevention
+
+# Observability System
+observability:
+  enable_event_collection: true
+  batch_size: 100  # Events per batch
+  batch_timeout_seconds: 5.0  # Max time before flushing batch
+  sample_rate: 1.0  # 1.0 = keep all events, 0.1 = keep 10%
+  enable_ai_summaries: true  # Use Haiku to generate event summaries
+  server_host: "0.0.0.0"
+  server_port: 8000
+  sqlite_path: "./data/events.db"
+
+# Retry and Error Handling
+retry:
+  max_attempts: 3  # Maximum retry attempts per task
+  initial_delay_seconds: 1.0  # Initial retry delay
+  max_delay_seconds: 60.0  # Maximum retry delay
+  exponential_base: 2.0  # Exponential backoff multiplier
+  enable_circuit_breaker: true
+  circuit_breaker_threshold: 5  # Failures before circuit opens
+
+# Security Settings
+security:
+  enable_pre_tool_hooks: true  # Run safety checks before tool execution
+  dangerous_patterns_file: null  # Path to custom patterns file
+  max_wildcard_count: 3  # Max wildcards allowed in commands
+  block_production_changes: true  # Prevent changes to production files
+  allowed_tools:
+    - Read
+    - Write
+    - Edit
+    - Glob
+    - Grep
+    - Bash
+    - Task
+
+# Global Settings
+log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+data_dir: "./data"
+enable_telemetry: false  # Anonymous usage statistics (not implemented yet)

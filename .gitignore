@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.hypothesis/
+.benchmarks/
+test_timing.csv
+
+# Linting & Type Checking
+.mypy_cache/
+.ruff_cache/
+
+# Environment variables
+.env
+.env.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Logs
+*.log
+logs/
+
+# iCCC specific
+.iccc/
+worktrees/
+dashboard/node_modules/
+dashboard/dist/
+
+# Claude/AI specific
+.claude/
+openspec/
+
+# GitHub
+.github/
+
+# Documentation (generated/reference)
+docs/

@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: iccc-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: iccc
+      MONGO_INITDB_ROOT_PASSWORD: iccc_dev_password
+      MONGO_INITDB_DATABASE: iccc
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: iccc-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  observability-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iccc-observability
+    ports:
+      - "8000:8000"
+    environment:
+      MONGODB_URL: mongodb://iccc:iccc_dev_password@mongodb:27017/iccc
+      REDIS_URL: redis://redis:6379/0
+      SQLITE_PATH: /data/events.db
+    volumes:
+      - observability_data:/data
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uvicorn", "iccc.observability.server:app", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  mongodb_data:
+  redis_data:
+  observability_data:

@@ -1,0 +1,164 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "tool_name:Bash",
+        "hooks": [
+          {
+            "name": "safety_check",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/safety_check.py",
+            "timeout_ms": 50,
+            "priority": "critical",
+            "max_retries": 0,
+            "env": {
+              "TOOL_NAME": "${TOOL_NAME}",
+              "TOOL_COMMAND": "${TOOL_COMMAND}"
+            }
+          },
+          {
+            "name": "file_lock_acquire",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/file_lock.py acquire",
+            "timeout_ms": 80,
+            "priority": "critical",
+            "max_retries": 2,
+            "retry_delay_ms": 500,
+            "env": {
+              "FILE_PATH": "${FILE_PATH}",
+              "AGENT_ID": "${AGENT_ID}"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": "tool_name:Edit",
+        "hooks": [
+          {
+            "name": "file_lock_acquire",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/file_lock.py acquire",
+            "timeout_ms": 80,
+            "priority": "critical",
+            "max_retries": 2,
+            "retry_delay_ms": 500,
+            "env": {
+              "FILE_PATH": "${FILE_PATH}",
+              "AGENT_ID": "${AGENT_ID}"
+            }
+          }
+        ]
+      },
+      {
+        "matcher": "tool_name:Write",
+        "hooks": [
+          {
+            "name": "file_lock_acquire",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/file_lock.py acquire",
+            "timeout_ms": 80,
+            "priority": "critical",
+            "max_retries": 2,
+            "retry_delay_ms": 500,
+            "env": {
+              "FILE_PATH": "${FILE_PATH}",
+              "AGENT_ID": "${AGENT_ID}"
+            }
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "event_collector",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/event_collector.py",
+            "timeout_ms": 80,
+            "priority": "normal",
+            "max_retries": 1,
+            "env": {
+              "TOOL_NAME": "${TOOL_NAME}",
+              "SESSION_ID": "${SESSION_ID}",
+              "AGENT_ID": "${AGENT_ID}"
+            }
+          },
+          {
+            "name": "file_lock_release",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/file_lock.py release",
+            "timeout_ms": 50,
+            "priority": "normal",
+            "max_retries": 2,
+            "env": {
+              "FILE_PATH": "${FILE_PATH}",
+              "AGENT_ID": "${AGENT_ID}"
+            }
+          },
+          {
+            "name": "logger",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/logger.py",
+            "timeout_ms": 50,
+            "priority": "normal",
+            "max_retries": 0,
+            "env": {
+              "TOOL_NAME": "${TOOL_NAME}",
+              "RESULT": "${RESULT}"
+            }
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "notification_handler",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/notification.py",
+            "timeout_ms": 100,
+            "priority": "normal",
+            "max_retries": 1,
+            "env": {
+              "NOTIFICATION_TYPE": "${NOTIFICATION_TYPE}",
+              "MESSAGE": "${MESSAGE}"
+            }
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "subagent_cleanup",
+            "type": "command",
+            "command": "python ~/.iccc/hooks/scripts/subagent_cleanup.py",
+            "timeout_ms": 80,
+            "priority": "normal",
+            "max_retries": 0,
+            "env": {
+              "AGENT_ID": "${AGENT_ID}",
+              "SESSION_ID": "${SESSION_ID}"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "config": {
+    "max_parallel_hooks": 3,
+    "default_timeout_ms": 100,
+    "enable_performance_monitoring": true,
+    "performance_thresholds": {
+      "p95_threshold_ms": 100,
+      "p99_threshold_ms": 200,
+      "failure_rate_threshold": 10.0
+    }
+  }
+}
