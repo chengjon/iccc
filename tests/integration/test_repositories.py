@@ -20,6 +20,7 @@ from iccc.models.entities import (
     Agent,
     AgentStatus,
     Goal,
+    GoalStatus,
     HookEvent,
     ModelTier,
     Project,
@@ -193,7 +194,8 @@ class TestAgentRepository:
         agent = Agent(
             id="agent-001",
             project_id=project_id,
-            type="code-reviewer",
+            name="Code Reviewer Agent",
+            agent_type="code-reviewer",
             specialization="Python code review",
             model=ModelTier.SONNET,
             status=AgentStatus.IDLE,
@@ -202,7 +204,7 @@ class TestAgentRepository:
 
         created = await repo.create(agent)
         assert created.id == agent.id
-        assert created.type == "code-reviewer"
+        assert created.agent_type == "code-reviewer"
 
     async def test_get_agent(self, db_client, clean_collections):
         """Test getting an agent by ID."""
@@ -212,7 +214,8 @@ class TestAgentRepository:
         agent = Agent(
             id="agent-002",
             project_id=project_id,
-            type="worker",
+            name="Worker Agent",
+            agent_type="worker",
             specialization="General coding",
             model=ModelTier.HAIKU,
             status=AgentStatus.IDLE,
@@ -236,7 +239,8 @@ class TestAgentRepository:
             agent = Agent(
                 id=f"agent-{i}",
                 project_id=project_id,
-                type="worker",
+                name=f"Worker Agent {i}",
+                agent_type="worker",
                 specialization=f"Task {i}",
                 model=ModelTier.HAIKU,
                 status=status,
@@ -258,7 +262,8 @@ class TestAgentRepository:
             agent = Agent(
                 id=f"p1-agent-{i}",
                 project_id=project1_id,
-                type="worker",
+                name=f"P1 Worker Agent {i}",
+                agent_type="worker",
                 specialization=f"Task {i}",
                 model=ModelTier.HAIKU,
                 status=AgentStatus.IDLE,
@@ -271,7 +276,8 @@ class TestAgentRepository:
             agent = Agent(
                 id=f"p2-agent-{i}",
                 project_id=project2_id,
-                type="worker",
+                name=f"P2 Worker Agent {i}",
+                agent_type="worker",
                 specialization=f"Task {i}",
                 model=ModelTier.HAIKU,
                 status=AgentStatus.IDLE,
@@ -559,11 +565,11 @@ class TestSessionRepository:
 
         # End the session
         session.ended_at = datetime.now(timezone.utc)
-        session.total_tokens = 1000
+        session.token_usage = {"input": 500, "output": 500, "total": 1000}
         updated = await repo.update(session)
 
         assert updated.ended_at is not None
-        assert updated.total_tokens == 1000
+        assert updated.token_usage["total"] == 1000
 
 
 @pytest.mark.asyncio
@@ -724,10 +730,10 @@ class TestGoalRepository:
         goal = Goal(
             id=uuid4(),
             project_id=project_id,
+            name="Authentication System",
             description="Implement authentication system",
             priority=1,
-            status="active",
-            created_at=datetime.now(timezone.utc),
+            status=GoalStatus.ACTIVE,
         )
 
         created = await repo.create(goal)
@@ -743,10 +749,10 @@ class TestGoalRepository:
             goal = Goal(
                 id=uuid4(),
                 project_id=project_id,
-                description=f"Goal {i}",
+                name=f"Goal {i}",
+                description=f"Description for goal {i}",
                 priority=i + 1,
-                status="active",
-                created_at=datetime.now(timezone.utc),
+                status=GoalStatus.ACTIVE,
             )
             await repo.create(goal)
 
@@ -759,14 +765,15 @@ class TestGoalRepository:
         project_id = uuid4()
 
         # Create goals with different priorities
-        for priority in [1, 2, 3, 5, 8]:
+        # Note: priority should be 1-5, so we skip 8
+        for priority in [1, 2, 3, 4, 5]:
             goal = Goal(
                 id=uuid4(),
                 project_id=project_id,
-                description=f"Priority {priority} goal",
+                name=f"Priority {priority} Goal",
+                description=f"Goal with priority {priority}",
                 priority=priority,
-                status="active",
-                created_at=datetime.now(timezone.utc),
+                status=GoalStatus.ACTIVE,
             )
             await repo.create(goal)
 
@@ -783,10 +790,10 @@ class TestGoalRepository:
         parent_goal = Goal(
             id=uuid4(),
             project_id=project_id,
-            description="Parent goal",
+            name="Parent Goal",
+            description="Parent goal description",
             priority=1,
-            status="active",
-            created_at=datetime.now(timezone.utc),
+            status=GoalStatus.ACTIVE,
         )
         await repo.create(parent_goal)
 
@@ -795,11 +802,11 @@ class TestGoalRepository:
             sub_goal = Goal(
                 id=uuid4(),
                 project_id=project_id,
-                description=f"Sub-goal {i}",
+                name=f"Sub-goal {i}",
+                description=f"Sub-goal {i} description",
                 priority=2,
-                status="active",
+                status=GoalStatus.ACTIVE,
                 parent_goal_id=parent_goal.id,
-                created_at=datetime.now(timezone.utc),
             )
             await repo.create(sub_goal)
 
