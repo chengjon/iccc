@@ -3,15 +3,13 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from iccc.models.entities import ModelTier, Task, TaskType
-from iccc.planning.htn import CompoundTask, HTNPlanner, PrimitiveTask
+from iccc.planning.htn import CompoundTask, HTNPlanner
 from iccc.planning.strips import STRIPSPlanner
-from iccc.planning.templates import WorkflowTemplates
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +44,9 @@ class ReplanStrategy(BaseModel):
 
     action: str = Field(description="Action to take (redecompose, change_model, etc.)")
     reasoning: str = Field(description="Why this strategy was chosen")
-    new_model: Optional[ModelTier] = None
-    new_task_type: Optional[TaskType] = None
-    adjust_complexity: Optional[int] = None  # -1, 0, +1
+    new_model: ModelTier | None = None
+    new_task_type: TaskType | None = None
+    adjust_complexity: int | None = None  # -1, 0, +1
     metadata: dict = Field(default_factory=dict)
 
 
@@ -223,11 +221,11 @@ class AdaptivePlanner:
     def _find_alternative_task_type(self, current_type: TaskType) -> TaskType:
         """Find an alternative task type that might work better."""
         alternatives = {
-            TaskType.GENERAL_CODING: TaskType.REFACTORING,
-            TaskType.REFACTORING: TaskType.GENERAL_CODING,
-            TaskType.BUG_FIX: TaskType.DEBUGGING,
-            TaskType.DEBUGGING: TaskType.BUG_FIX,
+            TaskType.GENERAL_CODING: TaskType.CODE_REFACTOR,
+            TaskType.CODE_REFACTOR: TaskType.GENERAL_CODING,
+            TaskType.BUG_FIX: TaskType.GENERAL_CODING,
             TaskType.TEST_WRITING: TaskType.CODE_REVIEW,
+            TaskType.CODE_REVIEW: TaskType.TEST_WRITING,
         }
         return alternatives.get(current_type, current_type)
 
