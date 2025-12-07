@@ -1,13 +1,13 @@
 """Custom exception hierarchy for iCCC."""
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 
 class ICCCError(Exception):
     """Base exception for all iCCC errors."""
 
-    def __init__(self, message: str, context: Optional[dict[str, Any]] = None) -> None:
+    def __init__(self, message: str, context: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.message = message
         self.context = context or {}
@@ -133,7 +133,7 @@ class PlanningError(ICCCError):
 class PlanningFailedError(PlanningError):
     """Planner failed to find a solution."""
 
-    def __init__(self, reason: str, initial_state: dict, goal_state: dict) -> None:
+    def __init__(self, reason: str, initial_state: dict[str, Any], goal_state: dict[str, Any]) -> None:
         super().__init__(
             f"Planning failed: {reason}",
             context={
@@ -170,7 +170,7 @@ class LockAcquisitionError(LockError):
     """Failed to acquire lock."""
 
     def __init__(
-        self, file_path: str, lock_type: str, holder: Optional[str] = None
+        self, file_path: str, lock_type: str, holder: str | None = None
     ) -> None:
         holder_msg = f" (held by {holder})" if holder else ""
         super().__init__(
@@ -247,7 +247,7 @@ class RateLimitError(APIError):
     """API rate limit exceeded."""
 
     def __init__(
-        self, service: str, retry_after: Optional[float] = None, quota_info: Optional[dict] = None
+        self, service: str, retry_after: float | None = None, quota_info: dict[str, Any] | None = None
     ) -> None:
         retry_msg = f" (retry after {retry_after}s)" if retry_after else ""
         super().__init__(
@@ -266,7 +266,7 @@ class RateLimitError(APIError):
 class ModelOverloadedError(APIError):
     """Claude model is overloaded."""
 
-    def __init__(self, model: str, retry_after: Optional[float] = None) -> None:
+    def __init__(self, model: str, retry_after: float | None = None) -> None:
         super().__init__(
             f"Model {model} is overloaded",
             context={"model": model, "retry_after": retry_after},

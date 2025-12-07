@@ -3,14 +3,15 @@
 import asyncio
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
-from uuid import UUID
+from typing import Any
 
 from anthropic import AsyncAnthropic
 
 from iccc.models.entities import HookEvent
+from iccc.config import get_config
 
 
 @dataclass
@@ -80,20 +81,20 @@ class EventCollector:
         self.current_batch = EventBatch()
 
         # Callbacks for flushed batches
-        self.flush_callbacks: list[callable] = []
+        self.flush_callbacks: list[Callable[[list[HookEvent]], None]] = []
 
         # AI client for summaries
-        self.ai_client: Optional[AsyncAnthropic] = None
+        self.ai_client: AsyncAnthropic | None = None
         if enable_ai_summaries:
-            api_key = os.getenv("ANTHROPIC_API_KEY")
+            api_key = get_config().anthropic.api_key
             if api_key:
                 self.ai_client = AsyncAnthropic(api_key=api_key)
 
         # Background flush task
-        self.flush_task: Optional[asyncio.Task] = None
+        self.flush_task: asyncio.Task[None] | None = None
         self.running = False
 
-    def register_flush_callback(self, callback: callable) -> None:
+    def register_flush_callback(self, callback: Callable[[list[HookEvent]], None]) -> None:
         """Register a callback to be called when batch is flushed."""
         self.flush_callbacks.append(callback)
 
@@ -171,7 +172,7 @@ class EventCollector:
                 # Don't let callback failures stop flushing
                 print(f"Flush callback error: {e}")
 
-    async def _generate_ai_summary(self, events: list[HookEvent]) -> Optional[str]:
+    async def _generate_ai_summary(self, events: list[HookEvent]) -> str | None:
         """
         Generate AI-powered summary of events using Haiku.
 

@@ -2,9 +2,10 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -37,7 +38,7 @@ class RetryConfig(BaseModel):
     max_delay: float = Field(default=60.0, gt=0)
     exponential_base: float = Field(default=2.0, gt=1)
     strategy: RetryStrategy = RetryStrategy.EXPONENTIAL
-    retryable_exceptions: list[type[Exception]] = Field(
+    retryable_exceptions: list[type[OSError]] = Field(
         default_factory=lambda: [ConnectionError, TimeoutError]
     )
 
@@ -59,7 +60,7 @@ class CircuitBreaker:
         self.state = CircuitBreakerState.CLOSED
         self.failure_count = 0
         self.success_count = 0
-        self.last_failure_time: Optional[datetime] = None
+        self.last_failure_time: datetime | None = None
         self.half_open_calls = 0
 
     async def call(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
@@ -83,7 +84,7 @@ class CircuitBreaker:
             result = await func(*args, **kwargs)
             self._on_success()
             return result
-        except Exception as e:
+        except Exception:
             self._on_failure()
             raise
 
@@ -130,16 +131,16 @@ class RetryExecutor:
         self.config = config
 
     async def execute(
-        self, func: Callable[..., T], *args: Any, **kwargs: Any
+        self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any
     ) -> T:
         """Execute function with retry logic."""
-        last_exception: Optional[Exception] = None
+        last_exception: Exception | None = None
         delay = self.config.initial_delay
 
         for attempt in range(1, self.config.max_attempts + 1):
             try:
                 logger.debug(f"Attempt {attempt}/{self.config.max_attempts}")
-                result = await func(*args, **kwargs)
+                result: T = await func(*args, **kwargs)
                 if attempt > 1:
                     logger.info(f"Succeeded on attempt {attempt}")
                 return result
@@ -209,7 +210,7 @@ _circuit_breakers: dict[str, CircuitBreaker] = {}
 
 
 def get_circuit_breaker(
-    service_name: str, config: Optional[CircuitBreakerConfig] = None
+    service_name: str, config: CircuitBreakerConfig | None = None
 ) -> CircuitBreaker:
     """Get or create circuit breaker for a service."""
     if service_name not in _circuit_breakers:
@@ -219,9 +220,9 @@ def get_circuit_breaker(
 
 
 async def with_retry(
-    func: Callable[..., T],
+    func: Callable[..., Awaitable[T]],
     *args: Any,
-    config: Optional[RetryConfig] = None,
+    config: RetryConfig | None = None,
     **kwargs: Any,
 ) -> T:
     """Convenience function to execute with retry logic."""
@@ -232,11 +233,12 @@ async def with_retry(
 
 async def with_circuit_breaker(
     service_name: str,
-    func: Callable[..., T],
+    func: Callable[..., Awaitable[T]],
     *args: Any,
-    cb_config: Optional[CircuitBreakerConfig] = None,
+    cb_config: CircuitBreakerConfig | None = None,
     **kwargs: Any,
 ) -> T:
     """Convenience function to execute with circuit breaker protection."""
     breaker = get_circuit_breaker(service_name, cb_config)
-    return await breaker.call(func, *args, **kwargs)
+    result: T = await breaker.call(func, *args, **kwargs)
+    return result
