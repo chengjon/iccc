@@ -4,11 +4,7 @@ from litestar import Litestar, get
 from litestar.config.cors import CORSConfig
 from litestar.openapi import OpenAPIConfig
 
-from iccc.api.middleware import (
-    api_key_auth_middleware,
-    error_handler,
-    logging_middleware,
-)
+from iccc.api.middleware import error_handler
 from iccc.api.routes import (
     agent_router,
     observability_router,
@@ -61,12 +57,7 @@ def create_app(enable_auth: bool = False) -> Litestar:
         },
     )
 
-    # Build middleware stack
-    middleware = [logging_middleware]
-    if enable_auth:
-        middleware.append(api_key_auth_middleware)
-
-    # Create app
+    # Create app (simplified - no custom middleware for now)
     app = Litestar(
         route_handlers=[
             health_check,
@@ -78,7 +69,6 @@ def create_app(enable_auth: bool = False) -> Litestar:
         ],
         cors_config=cors_config,
         openapi_config=openapi_config,
-        middleware=middleware,
         exception_handlers={Exception: error_handler},
         debug=True,  # Disable in production
     )

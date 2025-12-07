@@ -19,7 +19,7 @@ from iccc.api.schemas import ErrorResponse
 logger = logging.getLogger(__name__)
 
 
-async def error_handler(request: Request, exc: Exception) -> Response[ErrorResponse]:
+def error_handler(request: Request, exc: Exception) -> Response[ErrorResponse]:
     """
     Global error handler for all API exceptions.
 
@@ -96,81 +96,82 @@ def create_error_middleware() -> DefineMiddleware:
 
 
 # Request logging middleware
-async def logging_middleware(request: Request, next_handler: Any) -> Response:
+def logging_middleware(app: Any) -> Any:
     """
-    Log all incoming requests and their responses.
+    Create request logging middleware.
 
     Args:
-        request: Incoming request
-        next_handler: Next middleware/handler in chain
+        app: The ASGI application
 
     Returns:
-        Response from handler
+        Middleware wrapper
     """
-    start_time = datetime.now()
+    async def middleware(request: Request, next_handler: Any) -> Response:
+        """Log all incoming requests and their responses."""
+        start_time = datetime.now()
 
-    # Log request
-    logger.info(
-        f"Request: {request.method} {request.url.path}",
-        extra={
-            "method": request.method,
-            "path": request.url.path,
-            "client": request.client.host if request.client else None,
-        },
-    )
+        # Log request
+        logger.info(
+            f"Request: {request.method} {request.url.path}",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "client": request.client.host if request.client else None,
+            },
+        )
 
-    # Process request
-    response = await next_handler(request)
+        # Process request
+        response = await next_handler(request)
 
-    # Log response
-    duration = (datetime.now() - start_time).total_seconds() * 1000  # ms
-    logger.info(
-        f"Response: {response.status_code} ({duration:.2f}ms)",
-        extra={
-            "status": response.status_code,
-            "duration_ms": duration,
-        },
-    )
+        # Log response
+        duration = (datetime.now() - start_time).total_seconds() * 1000  # ms
+        logger.info(
+            f"Response: {response.status_code} ({duration:.2f}ms)",
+            extra={
+                "status": response.status_code,
+                "duration_ms": duration,
+            },
+        )
 
-    return response
+        return response
+
+    return middleware
 
 
 # API Key authentication middleware
-async def api_key_auth_middleware(request: Request, next_handler: Any) -> Response:
+def api_key_auth_middleware(app: Any) -> Any:
     """
-    Verify API key authentication.
-
-    Checks for X-API-Key header and validates it.
+    Create API key authentication middleware.
 
     Args:
-        request: Incoming request
-        next_handler: Next middleware/handler in chain
+        app: The ASGI application
 
     Returns:
-        Response from handler
-
-    Raises:
-        PermissionDeniedException: If API key is invalid or missing
+        Middleware wrapper
     """
-    # Skip auth for health/docs endpoints
-    if request.url.path in ["/", "/health", "/schema", "/schema/openapi.json"]:
+    async def middleware(request: Request, next_handler: Any) -> Response:
+        """Verify API key authentication."""
+        # Skip auth for health/docs endpoints
+        if request.url.path in ["/", "/health", "/schema", "/schema/openapi.json"]:
+            return await next_handler(request)
+
+        # Check for API key header
+        api_key = request.headers.get("X-API-Key")
+
+        if not api_key:
+            raise PermissionDeniedException(detail="Missing API key (X-API-Key header required)")
+
+        # Validate API key
+        # TODO: Implement actual validation against database/config
+        valid_keys = ["dev-key-12345"]  # Placeholder
+
+        if api_key not in valid_keys:
+            raise PermissionDeniedException(detail="Invalid API key")
+
+        # API key is valid - continue
         return await next_handler(request)
 
-    # Check for API key header
-    api_key = request.headers.get("X-API-Key")
-
-    if not api_key:
-        raise PermissionDeniedException(detail="Missing API key (X-API-Key header required)")
-
-    # Validate API key
-    # TODO: Implement actual validation against database/config
-    valid_keys = ["dev-key-12345"]  # Placeholder
-
-    if api_key not in valid_keys:
-        raise PermissionDeniedException(detail="Invalid API key")
-
-    # API key is valid - continue
-    return await next_handler(request)
+    return middleware
 
 
 # Rate limiting middleware (placeholder)

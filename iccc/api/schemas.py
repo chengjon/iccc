@@ -33,15 +33,25 @@ class ProjectResponse(BaseModel):
     id: UUID
     name: str
     directory: str
-    description: str | None
-    git_repo: str | None
+    description: str | None = None
+    git_repo: str | None = None
     status: str
     created_at: datetime
     updated_at: datetime
-    metadata: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         from_attributes = True
+
+    @classmethod
+    def model_validate(cls, obj):
+        """Custom validation to handle ProjectStatus enum."""
+        if hasattr(obj, "status") and not isinstance(obj.status, str):
+            # Convert enum to string
+            obj_dict = obj.model_dump(mode="python") if hasattr(obj, "model_dump") else obj.__dict__
+            obj_dict["status"] = obj.status.value if hasattr(obj.status, "value") else str(obj.status)
+            return super().model_validate(obj_dict)
+        return super().model_validate(obj)
 
 
 # Agent Schemas

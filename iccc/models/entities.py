@@ -98,6 +98,8 @@ class Project(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     name: str
     directory: str
+    description: str | None = None
+    git_repo: str | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
