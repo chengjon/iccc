@@ -1,8 +1,6 @@
 """Tests for database migration system."""
 
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
 
 import pytest
 
@@ -11,7 +9,6 @@ from iccc.db.migrations import (
     AddTaskComplexityMigration,
     AddWorktreePathToAgentMigration,
     InitialSchemaMigration,
-    Migration,
     MigrationRunner,
     get_all_migrations,
 )
@@ -281,10 +278,17 @@ class TestAddWorktreePathToAgentMigration:
 
 def test_get_all_migrations():
     """Test getting all registered migrations."""
+    from iccc.db.migrations import (
+        AddGoalsCollectionMigration,
+        AddPromptTemplatesCollectionMigration,
+    )
+
     migrations = get_all_migrations()
 
-    assert len(migrations) == 4
+    assert len(migrations) == 6
     assert isinstance(migrations[0], InitialSchemaMigration)
     assert isinstance(migrations[1], AddTaskComplexityMigration)
     assert isinstance(migrations[2], AddFilesModifiedToTaskMigration)
     assert isinstance(migrations[3], AddWorktreePathToAgentMigration)
+    assert isinstance(migrations[4], AddPromptTemplatesCollectionMigration)
+    assert isinstance(migrations[5], AddGoalsCollectionMigration)

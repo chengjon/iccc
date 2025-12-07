@@ -43,13 +43,25 @@ pip install -e .
 uv pip install -e .
 ```
 
-### 3. 安装开发依赖（可选）
+### 3. 安装开发依赖（推荐）
 
 ```bash
 pip install -e ".[dev]"
+
+# 或使用 uv (更快)
+uv pip install -e ".[dev]"
 ```
 
-### 4. 启动依赖服务
+### 4. 验证安装
+
+```bash
+# 运行测试确保安装正确
+python -m pytest tests/ -v --tb=short
+
+# 预期结果: 470 passed, 23 skipped
+```
+
+### 5. 启动依赖服务
 
 确保 MongoDB 和 Redis 正在运行:
 
@@ -294,6 +306,72 @@ iccc task create --project "MyApp" \
 
 # 查看审核结果
 iccc task status <task-id> --full
+```
+
+## 开发者指南
+
+### 运行测试
+
+```bash
+# 运行所有测试
+python -m pytest tests/ -v
+
+# 运行特定模块测试
+python -m pytest tests/agents/ -v
+python -m pytest tests/queue/ -v
+python -m pytest tests/hooks/ -v
+
+# 运行带覆盖率报告
+python -m pytest tests/ --cov=iccc --cov-report=term-missing
+
+# 快速测试 (跳过慢速测试)
+python -m pytest tests/ -v -m "not slow"
+```
+
+### 类型检查
+
+```bash
+# 运行 mypy 类型检查
+python -m mypy iccc/ --ignore-missing-imports
+
+# 检查特定模块
+python -m mypy iccc/agents/ --ignore-missing-imports
+python -m mypy iccc/queue/ --ignore-missing-imports
+```
+
+### 代码质量
+
+```bash
+# 运行 ruff 格式检查
+ruff check iccc/
+
+# 自动修复
+ruff check iccc/ --fix
+```
+
+### 当前测试状态
+
+| 测试类别 | 数量 | 状态 |
+|----------|------|------|
+| 单元测试 | 450+ | ✅ 通过 |
+| 集成测试 | 20+ | ✅ 通过 |
+| 总计 | 470 | ✅ 通过 |
+| 跳过 | 23 | ⏭️ 需要外部服务 |
+
+### 项目结构
+
+```
+iccc/
+├── agents/          # Agent 客户端和子代理管理
+├── db/              # MongoDB 数据库仓库
+├── hooks/           # Claude Hooks 实现
+├── isolation/       # Git Worktree 隔离管理
+├── locks/           # Redis 分布式文件锁
+├── models/          # Pydantic 数据模型
+├── observability/   # 事件收集和监控
+├── planning/        # 任务规划算法
+├── queue/           # Redis 任务队列
+└── orchestrator.py  # 主编排器
 ```
 
 ## 下一步

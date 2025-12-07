@@ -1,12 +1,17 @@
-"""Redis-based file locking for multi-agent coordination."""
+"""Redis-based task queue for multi-agent coordination."""
 
-import asyncio
+from __future__ import annotations
+
+import json
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import AsyncIterator, Optional
+from typing import Any
 
 import redis.asyncio as redis
+
+from iccc.config import get_config
 
 
 class LockType(str, Enum):
@@ -19,14 +24,21 @@ class LockType(str, Enum):
 class FileLockManager:
     """Redis-based distributed file locking."""
 
-    def __init__(self, redis_url: Optional[str] = None) -> None:
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self.client: Optional[redis.Redis] = None
+    def __init__(self, redis_url: str | None = None) -> None:
+        self.redis_url: str = redis_url if redis_url is not None else self._build_redis_url_from_config()
+        self.client: redis.Redis[str] | None = None
 
         # Lock key prefix
         self.lock_prefix = "iccc:lock:"
         self.read_lock_suffix = ":readers"
         self.write_lock_suffix = ":writer"
+
+    def _build_redis_url_from_config(self) -> str:
+        """Constructs the Redis URL from the centralized configuration."""
+        config = get_config().redis
+        if config.password:
+            return f"redis://:{config.password}@{config.host}:{config.port}/{config.db}"
+        return f"redis://{config.host}:{config.port}/{config.db}"
 
     async def connect(self) -> None:
         """Establish Redis connection."""
@@ -115,7 +127,7 @@ class FileLockManager:
         return 1
         """
 
-        result = await self.client.eval(
+        result = await self.client.eval(  # type: ignore[no-untyped-call]
             lua_script, 2, write_lock_key, read_lock_key, agent_id, str(timeout)
         )
 
@@ -207,7 +219,7 @@ class FileLockManager:
                 else:
                     await self.release_write_lock(file_path, agent_id)
 
-    async def check_lock_owner(self, file_path: str) -> Optional[str]:
+    async def check_lock_owner(self, file_path: str) -> str | None:
         """
         Check who owns the write lock for a file.
 
@@ -226,7 +238,7 @@ class FileLockManager:
         owner = await self.client.get(write_lock_key)
         return owner
 
-    async def detect_deadlocks(self) -> list[dict]:
+    async def detect_deadlocks(self) -> list[dict[str, Any]]:
         """
         Detect potentially deadlocked file locks.
 
@@ -281,7 +293,7 @@ class FileLockManager:
 
         return bool(write_deleted or read_deleted)
 
-    async def get_lock_status(self, file_path: str) -> dict:
+    async def get_lock_status(self, file_path: str) -> dict[str, Any]:
         """
         Get the current lock status for a file.
 

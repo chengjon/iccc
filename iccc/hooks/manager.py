@@ -2,11 +2,11 @@
 
 import asyncio
 import json
-import subprocess
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from iccc.locks.file_lock import FileLockManager, LockType
 from iccc.models.entities import HookEvent
@@ -35,7 +35,7 @@ class HookConfig:
         command: str,
         timeout_ms: int = 1000,
         critical: bool = False,
-        env: Optional[dict[str, str]] = None,
+        env: dict[str, str] | None = None,
     ) -> None:
         self.hook_type = hook_type
         self.command = command
@@ -47,7 +47,7 @@ class HookConfig:
 class HookManager:
     """Manages and executes hooks for various events."""
 
-    def __init__(self, lock_manager: Optional[FileLockManager] = None) -> None:
+    def __init__(self, lock_manager: FileLockManager | None = None) -> None:
         self.hooks: dict[str, list[HookConfig]] = {}
         self.event_callbacks: list[Callable[[HookEvent], None]] = []
         self.lock_manager = lock_manager
@@ -67,8 +67,8 @@ class HookManager:
         self,
         hook_type: str,
         data: dict[str, Any],
-        session_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
+        session_id: str | None = None,
+        agent_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Trigger all hooks of a given type.
@@ -126,7 +126,7 @@ class HookManager:
             }
 
     async def _execute_hooks(
-        self, hook_type: str, data: dict[str, Any], session_id: Optional[str] = None
+        self, hook_type: str, data: dict[str, Any], session_id: str | None = None
     ) -> dict[str, Any]:
         """
         Execute all hooks for a given type.
@@ -215,7 +215,7 @@ class HookManager:
                     "stderr": stderr.decode("utf-8") if stderr else "",
                 }
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
                 raise RuntimeError(

@@ -4,7 +4,6 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +147,7 @@ class WorktreeManager:
             logger.error(f"Failed to cleanup worktree: {e}")
             raise RuntimeError(f"Worktree cleanup failed: {e}")
 
-    def list_worktrees(self) -> List[WorktreeInfo]:
+    def list_worktrees(self) -> list[WorktreeInfo]:
         """
         List all worktrees.
 
@@ -189,7 +188,7 @@ class WorktreeManager:
             logger.error(f"Failed to list worktrees: {e}")
             return []
 
-    def get_worktree_path(self, agent_id: str) -> Optional[Path]:
+    def get_worktree_path(self, agent_id: str) -> Path | None:
         """Get worktree path for an agent."""
         worktree_path = self.project_root / ".worktrees" / agent_id
 
@@ -209,7 +208,7 @@ class WorktreeManager:
         # Optional: Set other worktree-specific configs
         # e.g., disable certain hooks, set branch tracking, etc.
 
-    def _get_worktree_branch(self, worktree_path: Path) -> Optional[str]:
+    def _get_worktree_branch(self, worktree_path: Path) -> str | None:
         """Get branch name for a worktree."""
         try:
             branch = self._run_git(
@@ -230,8 +229,8 @@ class WorktreeManager:
 
     def _run_git(
         self,
-        args: List[str],
-        cwd: Optional[Path] = None,
+        args: list[str],
+        cwd: Path | None = None,
     ) -> str:
         """
         Run a Git command.

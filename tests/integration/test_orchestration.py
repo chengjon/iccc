@@ -1,6 +1,5 @@
 """Integration tests for multi-agent orchestration."""
 
-import asyncio
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -8,7 +7,7 @@ from uuid import uuid4
 import pytest
 
 from iccc.db.repositories import AgentRepository, MongoDBClient, ProjectRepository, TaskRepository
-from iccc.models.entities import Agent, AgentStatus, ModelTier, Project, Task, TaskType
+from iccc.models.entities import Agent, ModelTier, Project, Task, TaskType
 from iccc.orchestrator import Orchestrator
 from iccc.planning.templates import TaskDecomposer
 from iccc.queue.redis_queue import RedisTaskQueue

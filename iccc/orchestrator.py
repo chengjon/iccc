@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from iccc.agents.client import ClaudeClient
@@ -10,8 +10,8 @@ from iccc.agents.model_selector import ModelSelector
 from iccc.db.repositories import AgentRepository, MongoDBClient, TaskRepository
 from iccc.hooks.manager import HookManager
 from iccc.isolation.worktree import WorktreeManager
-from iccc.locks.file_lock import FileLockManager, LockType
-from iccc.models.entities import Agent, AgentStatus, Message, Task, TaskStatus
+from iccc.locks.file_lock import FileLockManager
+from iccc.models.entities import Agent, AgentStatus, Message, Task, TaskStatus, TaskType
 from iccc.planning.templates import TaskDecomposer
 from iccc.queue.redis_queue import RedisTaskQueue
 
@@ -23,9 +23,9 @@ class Orchestrator:
         self,
         project_id: UUID,
         project_dir: str,
-        mongodb_url: Optional[str] = None,
-        redis_url: Optional[str] = None,
-        anthropic_api_key: Optional[str] = None,
+        mongodb_url: str | None = None,
+        redis_url: str | None = None,
+        anthropic_api_key: str | None = None,
     ) -> None:
         self.project_id = project_id
         self.project_dir = project_dir
@@ -40,11 +40,11 @@ class Orchestrator:
         self.task_decomposer = TaskDecomposer()
 
         # Repositories
-        self.agent_repo: Optional[AgentRepository] = None
-        self.task_repo: Optional[TaskRepository] = None
+        self.agent_repo: AgentRepository | None = None
+        self.task_repo: TaskRepository | None = None
 
         # Running agents
-        self.running_agents: dict[str, asyncio.Task] = {}
+        self.running_agents: dict[str, asyncio.Task[None]] = {}
 
     async def start(self) -> None:
         """Start the orchestrator."""
@@ -93,7 +93,15 @@ class Orchestrator:
         if not self.task_repo:
             raise RuntimeError("Orchestrator not started")
 
-        task_ids = []
+        task_ids: list[UUID] = []
+
+        # Ensure task_type is a valid TaskType enum member, default to GENERAL_CODING if invalid
+        try:
+            # Try to match enum value (e.g., "general_coding")
+            enum_task_type = TaskType(task_type)
+        except ValueError:
+            # Fallback default
+            enum_task_type = TaskType.GENERAL_CODING
 
         if auto_decompose:
             # Decompose into primitive tasks
@@ -106,7 +114,7 @@ class Orchestrator:
                 task = Task(
                     project_id=self.project_id,
                     description=f"{prim_task.name}: {description}",
-                    task_type=task_type,
+                    task_type=enum_task_type,
                     status=TaskStatus.PENDING,
                     metadata={"primitive_task": prim_task.name, "complexity": prim_task.estimated_complexity},
                 )
@@ -123,7 +131,7 @@ class Orchestrator:
             task = Task(
                 project_id=self.project_id,
                 description=description,
-                task_type=task_type,
+                task_type=enum_task_type,
                 status=TaskStatus.PENDING,
             )
             await self.task_repo.create(task)
@@ -296,7 +304,7 @@ class Orchestrator:
             agent.last_active = datetime.now()
             await self.agent_repo.update(agent)
 
-    async def get_status(self) -> dict:
+    async def get_status(self) -> dict[str, Any]:
         """Get orchestrator status."""
         if not self.agent_repo:
             return {"status": "not_started"}

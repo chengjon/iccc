@@ -4,13 +4,11 @@ import logging
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from iccc.errors.exceptions import (
     AgentCrashedError,
-    ICCCError,
     LockAcquisitionError,
     ModelOverloadedError,
     QualityGateFailedError,
@@ -172,7 +170,7 @@ class AgentCrashRecoveryHandler(ErrorRecoveryHandler):
         return RecoveryResult(
             success=True,
             action_taken=RecoveryAction.REASSIGN,
-            message=f"Task will be reassigned to another agent",
+            message="Task will be reassigned to another agent",
             should_retry=True,
             delay_before_retry=10.0,
             metadata={
@@ -368,7 +366,7 @@ class ErrorRecoveryManager:
         ]
 
     async def recover(
-        self, error: Exception, context: Optional[dict[str, Any]] = None
+        self, error: Exception, context: dict[str, Any] | None = None
     ) -> RecoveryResult:
         """Attempt to recover from an error."""
         _context = context or {}

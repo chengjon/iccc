@@ -1,24 +1,31 @@
 """MongoDB repositories for data access."""
 
 import os
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, DESCENDING
 
-from iccc.models.entities import Agent, HookEvent, Project, Session, Task
+from iccc.models.entities import (
+    Agent,
+    Goal,
+    HookEvent,
+    Project,
+    PromptTemplate,
+    Session,
+    Task,
+)
+from iccc.config import get_config
 
 
 class MongoDBClient:
     """MongoDB client wrapper."""
 
-    def __init__(self, mongodb_url: Optional[str] = None) -> None:
-        self.mongodb_url = mongodb_url or os.getenv(
-            "MONGODB_URL", "mongodb://localhost:27017/iccc"
-        )
-        self.client: Optional[AsyncIOMotorClient] = None
-        self.db: Optional[AsyncIOMotorDatabase] = None
+    def __init__(self, mongodb_url: str | None = None) -> None:
+        self.mongodb_url = mongodb_url or get_config().mongodb.uri
+        self.client: AsyncIOMotorClient[Any] | None = None
+        self.db: AsyncIOMotorDatabase[Any] | None = None
 
     async def connect(self) -> None:
         """Establish database connection."""
@@ -81,7 +88,7 @@ class ProjectRepository:
         await self.collection.insert_one(project.model_dump(mode="json"))
         return project
 
-    async def get(self, project_id: UUID) -> Optional[Project]:
+    async def get(self, project_id: UUID) -> Project | None:
         """Get project by ID."""
         doc = await self.collection.find_one({"id": str(project_id)})
         if not doc:
@@ -90,7 +97,7 @@ class ProjectRepository:
         doc["id"] = UUID(doc["id"])
         return Project(**doc)
 
-    async def get_by_name(self, name: str) -> Optional[Project]:
+    async def get_by_name(self, name: str) -> Project | None:
         """Get project by name."""
         doc = await self.collection.find_one({"name": name})
         if not doc:
@@ -117,7 +124,7 @@ class ProjectRepository:
     async def delete(self, project_id: UUID) -> bool:
         """Delete a project."""
         result = await self.collection.delete_one({"id": str(project_id)})
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
 
 class AgentRepository:
@@ -138,13 +145,26 @@ class AgentRepository:
         await self.collection.insert_one(agent.model_dump(mode="json"))
         return agent
 
-    async def get(self, agent_id: str) -> Optional[Agent]:
+    async def get(self, agent_id: str) -> Agent | None:
         """Get agent by ID."""
         doc = await self.collection.find_one({"id": agent_id})
         if not doc:
             return None
         doc["project_id"] = UUID(doc["project_id"])
         return Agent(**doc)
+
+    async def get_by_id(self, agent_id: str) -> Agent | None:
+        """Get agent by ID (alias for get)."""
+        return await self.get(agent_id)
+
+    async def list_all(self) -> list[Agent]:
+        """List all agents."""
+        cursor = self.collection.find()
+        docs = await cursor.to_list(length=None)
+        for doc in docs:
+            if isinstance(doc["project_id"], str):
+                doc["project_id"] = UUID(doc["project_id"])
+        return [Agent(**doc) for doc in docs]
 
     async def list_by_project(self, project_id: UUID) -> list[Agent]:
         """List all agents for a project."""
@@ -174,7 +194,7 @@ class AgentRepository:
     async def delete(self, agent_id: str) -> bool:
         """Delete an agent."""
         result = await self.collection.delete_one({"id": agent_id})
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
 
 class TaskRepository:
@@ -195,7 +215,7 @@ class TaskRepository:
         await self.collection.insert_one(task.model_dump(mode="json"))
         return task
 
-    def _convert_task_doc(self, doc: dict) -> dict:
+    def _convert_task_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Convert MongoDB document to Task-compatible format."""
         if isinstance(doc["id"], str):
             doc["id"] = UUID(doc["id"])
@@ -205,7 +225,7 @@ class TaskRepository:
             doc["dependencies"] = [UUID(dep) if isinstance(dep, str) else dep for dep in doc["dependencies"]]
         return doc
 
-    async def get(self, task_id: UUID) -> Optional[Task]:
+    async def get(self, task_id: UUID) -> Task | None:
         """Get task by ID."""
         doc = await self.collection.find_one({"id": str(task_id)})
         if not doc:
@@ -265,7 +285,7 @@ class TaskRepository:
     async def delete(self, task_id: UUID) -> bool:
         """Delete a task."""
         result = await self.collection.delete_one({"id": str(task_id)})
-        return result.deleted_count > 0
+        return bool(result.deleted_count > 0)
 
 
 class SessionRepository:
@@ -286,7 +306,7 @@ class SessionRepository:
         await self.collection.insert_one(session.model_dump(mode="json"))
         return session
 
-    def _convert_session_doc(self, doc: dict) -> dict:
+    def _convert_session_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Convert MongoDB document to Session-compatible format."""
         if isinstance(doc["id"], str):
             doc["id"] = UUID(doc["id"])
@@ -294,7 +314,7 @@ class SessionRepository:
             doc["task_id"] = UUID(doc["task_id"])
         return doc
 
-    async def get(self, session_id: UUID) -> Optional[Session]:
+    async def get(self, session_id: UUID) -> Session | None:
         """Get session by ID."""
         doc = await self.collection.find_one({"id": str(session_id)})
         if not doc:
@@ -328,7 +348,7 @@ class HookEventRepository:
             raise RuntimeError("Database not connected")
         return self.db_client.db.hook_events
 
-    def _convert_hook_event_doc(self, doc: dict) -> dict:
+    def _convert_hook_event_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
         """Convert MongoDB document to HookEvent-compatible format."""
         if isinstance(doc["id"], str):
             doc["id"] = UUID(doc["id"])
@@ -341,7 +361,7 @@ class HookEventRepository:
         await self.collection.insert_one(hook_event.model_dump(mode="json"))
         return hook_event
 
-    async def get(self, event_id: UUID) -> Optional[HookEvent]:
+    async def get(self, event_id: UUID) -> HookEvent | None:
         """Get hook event by ID."""
         doc = await self.collection.find_one({"id": str(event_id)})
         if not doc:
@@ -365,4 +385,152 @@ class HookEventRepository:
         result = await self.collection.delete_many(
             {"timestamp": {"$lt": before_timestamp.isoformat()}}
         )
-        return result.deleted_count
+        return int(result.deleted_count)
+
+
+class PromptTemplateRepository:
+    """Repository for PromptTemplate entities."""
+
+    def __init__(self, db_client: MongoDBClient) -> None:
+        self.db_client = db_client
+
+    @property
+    def collection(self) -> Any:
+        """Get prompt_templates collection."""
+        if not self.db_client.db:
+            raise RuntimeError("Database not connected")
+        return self.db_client.db.prompt_templates
+
+    def _convert_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Convert MongoDB document to PromptTemplate-compatible format."""
+        if isinstance(doc["id"], str):
+            from uuid import UUID
+
+            doc["id"] = UUID(doc["id"])
+        return doc
+
+    async def create(self, template: PromptTemplate) -> PromptTemplate:
+        """Create a new prompt template."""
+        await self.collection.insert_one(template.model_dump(mode="json"))
+        return template
+
+    async def get(self, template_id: UUID) -> PromptTemplate | None:
+        """Get prompt template by ID."""
+        doc = await self.collection.find_one({"id": str(template_id)})
+        if not doc:
+            return None
+        return PromptTemplate(**self._convert_doc(doc))
+
+    async def get_by_name(self, name: str) -> PromptTemplate | None:
+        """Get prompt template by name."""
+        doc = await self.collection.find_one({"name": name})
+        if not doc:
+            return None
+        return PromptTemplate(**self._convert_doc(doc))
+
+    async def list_by_category(self, category: str) -> list[PromptTemplate]:
+        """List prompt templates by category."""
+        cursor = self.collection.find({"category": category})
+        docs = await cursor.to_list(length=None)
+        return [PromptTemplate(**self._convert_doc(doc)) for doc in docs]
+
+    async def list_all(self) -> list[PromptTemplate]:
+        """List all prompt templates."""
+        cursor = self.collection.find()
+        docs = await cursor.to_list(length=None)
+        return [PromptTemplate(**self._convert_doc(doc)) for doc in docs]
+
+    async def update(self, template: PromptTemplate) -> PromptTemplate:
+        """Update an existing prompt template."""
+        await self.collection.update_one(
+            {"id": str(template.id)}, {"$set": template.model_dump(mode="json")}
+        )
+        return template
+
+    async def delete(self, template_id: UUID) -> bool:
+        """Delete a prompt template."""
+        result = await self.collection.delete_one({"id": str(template_id)})
+        return bool(result.deleted_count > 0)
+
+
+class GoalRepository:
+    """Repository for Goal entities (HTN planning system)."""
+
+    def __init__(self, db_client: MongoDBClient) -> None:
+        self.db_client = db_client
+
+    @property
+    def collection(self) -> Any:
+        """Get goals collection."""
+        if not self.db_client.db:
+            raise RuntimeError("Database not connected")
+        return self.db_client.db.goals
+
+    def _convert_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Convert MongoDB document to Goal-compatible format."""
+        from uuid import UUID as UUIDType
+
+        if isinstance(doc["id"], str):
+            doc["id"] = UUIDType(doc["id"])
+        if isinstance(doc["project_id"], str):
+            doc["project_id"] = UUIDType(doc["project_id"])
+        if doc.get("parent_goal_id") and isinstance(doc["parent_goal_id"], str):
+            doc["parent_goal_id"] = UUIDType(doc["parent_goal_id"])
+        if doc.get("sub_task_ids"):
+            doc["sub_task_ids"] = [
+                UUIDType(tid) if isinstance(tid, str) else tid
+                for tid in doc["sub_task_ids"]
+            ]
+        return doc
+
+    async def create(self, goal: Goal) -> Goal:
+        """Create a new goal."""
+        await self.collection.insert_one(goal.model_dump(mode="json"))
+        return goal
+
+    async def get(self, goal_id: UUID) -> Goal | None:
+        """Get goal by ID."""
+        doc = await self.collection.find_one({"id": str(goal_id)})
+        if not doc:
+            return None
+        return Goal(**self._convert_doc(doc))
+
+    async def list_by_project(self, project_id: UUID) -> list[Goal]:
+        """List goals for a project."""
+        cursor = self.collection.find({"project_id": str(project_id)})
+        docs = await cursor.to_list(length=None)
+        return [Goal(**self._convert_doc(doc)) for doc in docs]
+
+    async def list_by_status(self, status: str) -> list[Goal]:
+        """List goals by status."""
+        cursor = self.collection.find({"status": status})
+        docs = await cursor.to_list(length=None)
+        return [Goal(**self._convert_doc(doc)) for doc in docs]
+
+    async def list_sub_goals(self, parent_goal_id: UUID) -> list[Goal]:
+        """List sub-goals of a parent goal."""
+        cursor = self.collection.find({"parent_goal_id": str(parent_goal_id)})
+        docs = await cursor.to_list(length=None)
+        return [Goal(**self._convert_doc(doc)) for doc in docs]
+
+    async def list_by_priority(
+        self, project_id: UUID, max_priority: int = 5
+    ) -> list[Goal]:
+        """List goals by priority (1=highest)."""
+        cursor = self.collection.find(
+            {"project_id": str(project_id), "priority": {"$lte": max_priority}}
+        ).sort("priority", ASCENDING)
+        docs = await cursor.to_list(length=None)
+        return [Goal(**self._convert_doc(doc)) for doc in docs]
+
+    async def update(self, goal: Goal) -> Goal:
+        """Update an existing goal."""
+        await self.collection.update_one(
+            {"id": str(goal.id)}, {"$set": goal.model_dump(mode="json")}
+        )
+        return goal
+
+    async def delete(self, goal_id: UUID) -> bool:
+        """Delete a goal."""
+        result = await self.collection.delete_one({"id": str(goal_id)})
+        return bool(result.deleted_count > 0)

@@ -1,7 +1,8 @@
 """Hierarchical Task Network (HTN) planner for task decomposition."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 
 @dataclass

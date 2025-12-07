@@ -2,10 +2,10 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ModelTier(str, Enum):
@@ -103,9 +103,17 @@ class Project(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(
-        json_encoders={UUID: str, datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, v: datetime) -> str:
+        """Serialize datetime to ISO format."""
+        return v.isoformat()
 
 
 class Agent(BaseModel):
@@ -116,17 +124,25 @@ class Agent(BaseModel):
     name: str
     agent_type: str  # e.g., "frontend-developer", "backend-developer"
     model: ModelTier
-    specialization: Optional[str] = None  # e.g., "frontend", "backend", "testing"
+    specialization: str | None = None  # e.g., "frontend", "backend", "testing"
     status: AgentStatus = AgentStatus.IDLE
-    worktree_path: Optional[str] = None
+    worktree_path: str | None = None
     tools: list[str] = Field(default_factory=list)  # Available tools
     created_at: datetime = Field(default_factory=datetime.now)
     last_active: datetime = Field(default_factory=datetime.now)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(
-        json_encoders={UUID: str, datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("project_id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("created_at", "last_active")
+    def serialize_datetime(self, v: datetime) -> str:
+        """Serialize datetime to ISO format."""
+        return v.isoformat()
 
 
 class TaskComplexity(BaseModel):
@@ -156,21 +172,34 @@ class Task(BaseModel):
     project_id: UUID
     description: str
     task_type: TaskType = TaskType.GENERAL_CODING
-    complexity: Optional[TaskComplexity] = None
+    complexity: TaskComplexity | None = None
     status: TaskStatus = TaskStatus.PENDING
-    assigned_agent_id: Optional[str] = None
+    assigned_agent_id: str | None = None
     dependencies: list[UUID] = Field(default_factory=list)  # Task IDs that must complete first
-    result: Optional[str] = None
-    error: Optional[str] = None
+    result: str | None = None
+    error: str | None = None
     files_modified: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(
-        json_encoders={UUID: str, datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("id", "project_id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("dependencies")
+    def serialize_dependencies(self, v: list[UUID]) -> list[str]:
+        """Serialize dependency UUIDs to strings."""
+        return [str(dep) for dep in v]
+
+    @field_serializer("created_at", "started_at", "completed_at")
+    def serialize_datetime(self, v: datetime | None) -> str | None:
+        """Serialize datetime to ISO format."""
+        return v.isoformat() if v else None
 
 
 class Message(BaseModel):
@@ -180,9 +209,12 @@ class Message(BaseModel):
     content: str
     timestamp: datetime = Field(default_factory=datetime.now)
 
-    model_config = ConfigDict(
-        json_encoders={datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("timestamp")
+    def serialize_datetime(self, v: datetime) -> str:
+        """Serialize datetime to ISO format."""
+        return v.isoformat()
 
 
 class Session(BaseModel):
@@ -196,12 +228,20 @@ class Session(BaseModel):
         default_factory=lambda: {"input": 0, "output": 0, "total": 0}
     )
     started_at: datetime = Field(default_factory=datetime.now)
-    ended_at: Optional[datetime] = None
+    ended_at: datetime | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(
-        json_encoders={UUID: str, datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("id", "task_id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("started_at", "ended_at")
+    def serialize_datetime(self, v: datetime | None) -> str | None:
+        """Serialize datetime to ISO format."""
+        return v.isoformat() if v else None
 
 
 class HookEvent(BaseModel):
@@ -213,6 +253,91 @@ class HookEvent(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
     data: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(
-        json_encoders={UUID: str, datetime: lambda v: v.isoformat()}
-    )
+    model_config = ConfigDict()
+
+    @field_serializer("id", "session_id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("timestamp")
+    def serialize_datetime(self, v: datetime) -> str:
+        """Serialize datetime to ISO format."""
+        return v.isoformat()
+
+
+class PromptTemplate(BaseModel):
+    """Reusable prompt template for agent instructions."""
+
+    id: UUID = Field(default_factory=uuid4)
+    name: str
+    category: str  # e.g., "coding", "review", "testing", "documentation"
+    template: str  # Template with placeholders like {task_description}
+    variables: list[str] = Field(default_factory=list)  # Required variables
+    model_tier: ModelTier | None = None  # Recommended model tier
+    description: str | None = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict()
+
+    @field_serializer("id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, v: datetime) -> str:
+        """Serialize datetime to ISO format."""
+        return v.isoformat()
+
+
+class GoalStatus(str, Enum):
+    """Goal lifecycle status for planning system."""
+
+    PENDING = "pending"
+    ACTIVE = "active"
+    ACHIEVED = "achieved"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Goal(BaseModel):
+    """Goal entity for HTN planning system."""
+
+    id: UUID = Field(default_factory=uuid4)
+    project_id: UUID
+    name: str
+    description: str
+    status: GoalStatus = GoalStatus.PENDING
+    priority: int = Field(default=1, ge=1, le=5)  # 1=highest, 5=lowest
+    preconditions: dict[str, Any] = Field(default_factory=dict)  # State requirements
+    effects: dict[str, Any] = Field(default_factory=dict)  # State changes when achieved
+    parent_goal_id: UUID | None = None  # For hierarchical goals
+    sub_task_ids: list[UUID] = Field(default_factory=list)  # Related tasks
+    created_at: datetime = Field(default_factory=datetime.now)
+    achieved_at: datetime | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict()
+
+    @field_serializer("id", "project_id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("parent_goal_id")
+    def serialize_parent_goal_id(self, v: UUID | None) -> str | None:
+        """Serialize parent goal UUID to string."""
+        return str(v) if v else None
+
+    @field_serializer("sub_task_ids")
+    def serialize_sub_task_ids(self, v: list[UUID]) -> list[str]:
+        """Serialize sub task UUIDs to strings."""
+        return [str(task_id) for task_id in v]
+
+    @field_serializer("created_at", "achieved_at")
+    def serialize_datetime(self, v: datetime | None) -> str | None:
+        """Serialize datetime to ISO format."""
+        return v.isoformat() if v else None

@@ -1,14 +1,21 @@
 """Claude API client wrapper."""
 
+from __future__ import annotations
+
 import logging
 import os
-from typing import Any, AsyncIterator, Optional
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 from anthropic import Anthropic, AsyncAnthropic
-from redis.asyncio import Redis
+
+from iccc.config import get_config
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 from iccc.agents.model_selector import ModelSelector
-from iccc.agents.rate_limiter import AdaptiveRateLimiter, get_rate_limiter
+from iccc.agents.rate_limiter import get_rate_limiter
 from iccc.errors.exceptions import ModelOverloadedError, RateLimitError
 from iccc.models.entities import Message, ModelTier
 
@@ -19,7 +26,7 @@ class ClaudeClient:
     """Wrapper for Claude API interactions."""
 
     def __init__(
-        self, api_key: Optional[str] = None, redis_client: Optional[Redis] = None
+        self, api_key: str | None = None, redis_client: Redis[str] | None = None
     ) -> None:
         """
         Initialize Claude client.
@@ -28,9 +35,9 @@ class ClaudeClient:
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
             redis_client: Optional Redis client for distributed rate limiting
         """
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.api_key = api_key or get_config().anthropic.api_key
         if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not provided")
+            raise ValueError("ANTHROPIC_API_KEY not provided or configured")
 
         self.client = AsyncAnthropic(api_key=self.api_key)
         self.sync_client = Anthropic(api_key=self.api_key)
@@ -40,8 +47,8 @@ class ClaudeClient:
         self,
         messages: list[Message],
         model: ModelTier = ModelTier.SONNET,
-        system: Optional[str] = None,
-        max_tokens: Optional[int] = None,
+        system: str | None = None,
+        max_tokens: int | None = None,
         temperature: float = 1.0,
     ) -> dict[str, Any]:
         """
@@ -76,19 +83,25 @@ class ClaudeClient:
         await self.rate_limiter.acquire(model, estimated_tokens)
 
         # Convert Message objects to API format
-        api_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
+        api_messages: list[dict[str, Any]] = [{"role": msg.role, "content": msg.content} for msg in messages]
 
         try:
             response = await self.client.messages.create(
                 model=config["model"],
                 max_tokens=max_tokens,
                 temperature=temperature,
-                system=system,
-                messages=api_messages,
+                system=system, # type: ignore[arg-type]
+                messages=api_messages, # type: ignore[arg-type]
             )
 
+            content_text = ""
+            if response.content:
+                for block in response.content:
+                    if block.type == "text":
+                        content_text += block.text
+
             return {
-                "content": response.content[0].text if response.content else "",
+                "content": content_text,
                 "usage": {
                     "input_tokens": response.usage.input_tokens,
                     "output_tokens": response.usage.output_tokens,
@@ -123,8 +136,8 @@ class ClaudeClient:
         self,
         messages: list[Message],
         model: ModelTier = ModelTier.SONNET,
-        system: Optional[str] = None,
-        max_tokens: Optional[int] = None,
+        system: str | None = None,
+        max_tokens: int | None = None,
         temperature: float = 1.0,
     ) -> AsyncIterator[str]:
         """
@@ -158,15 +171,15 @@ class ClaudeClient:
         # Check rate limits before making request
         await self.rate_limiter.acquire(model, estimated_tokens)
 
-        api_messages = [{"role": msg.role, "content": msg.content} for msg in messages]
+        api_messages: list[dict[str, Any]] = [{"role": msg.role, "content": msg.content} for msg in messages]
 
         try:
             async with self.client.messages.stream(
                 model=config["model"],
                 max_tokens=max_tokens,
                 temperature=temperature,
-                system=system,
-                messages=api_messages,
+                system=system, # type: ignore[arg-type]
+                messages=api_messages, # type: ignore[arg-type]
             ) as stream:
                 async for text in stream.text_stream:
                     yield text

@@ -1,10 +1,18 @@
 """Git worktree manager for agent isolation."""
 
 import asyncio
-import os
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+
+
+@dataclass
+class ProcessResult:
+    """Result of a subprocess execution."""
+
+    returncode: int
+    stdout: str
+    stderr: str
 
 
 class WorktreeManager:
@@ -15,7 +23,7 @@ class WorktreeManager:
         self.worktrees_dir = self.project_dir / "worktrees"
 
     async def create_worktree(
-        self, agent_id: str, branch: Optional[str] = None
+        self, agent_id: str, branch: str | None = None
     ) -> Path:
         """
         Create a new worktree for an agent.
@@ -82,7 +90,7 @@ class WorktreeManager:
         if worktree_path.exists():
             shutil.rmtree(worktree_path)
 
-    async def list_worktrees(self) -> list[dict]:
+    async def list_worktrees(self) -> list[dict[str, str]]:
         """
         List all worktrees.
 
@@ -96,29 +104,30 @@ class WorktreeManager:
             return []
 
         # Parse output
-        worktrees = []
-        current_worktree = {}
+        worktrees: list[dict[str, str]] = []
+        current_worktree: dict[str, str] = {}
 
-        for line in result.stdout.strip().split("\n"):
-            if not line:
-                if current_worktree:
-                    worktrees.append(current_worktree)
-                    current_worktree = {}
-                continue
+        if result.stdout:
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    if current_worktree:
+                        worktrees.append(current_worktree)
+                        current_worktree = {}
+                    continue
 
-            if line.startswith("worktree "):
-                current_worktree["path"] = line.split(" ", 1)[1]
-            elif line.startswith("branch "):
-                current_worktree["branch"] = line.split(" ", 1)[1]
-            elif line.startswith("HEAD "):
-                current_worktree["commit"] = line.split(" ", 1)[1]
+                if line.startswith("worktree "):
+                    current_worktree["path"] = line.split(" ", 1)[1]
+                elif line.startswith("branch "):
+                    current_worktree["branch"] = line.split(" ", 1)[1]
+                elif line.startswith("HEAD "):
+                    current_worktree["commit"] = line.split(" ", 1)[1]
 
-        if current_worktree:
-            worktrees.append(current_worktree)
+            if current_worktree:
+                worktrees.append(current_worktree)
 
         return worktrees
 
-    async def get_worktree_path(self, agent_id: str) -> Optional[Path]:
+    async def get_worktree_path(self, agent_id: str) -> Path | None:
         """
         Get the path to an agent's worktree.
 
@@ -149,7 +158,7 @@ class WorktreeManager:
             raise RuntimeError(f"Worktree for agent {agent_id} not found")
 
         # Run git commands in worktree directory
-        async def run_in_worktree(cmd: list[str]) -> asyncio.subprocess.Process:
+        async def run_in_worktree(cmd: list[str]) -> ProcessResult:
             return await self._run_git(cmd, cwd=worktree_path)
 
         # Fetch latest changes
@@ -159,7 +168,7 @@ class WorktreeManager:
         await run_in_worktree(["git", "merge", f"origin/{source_branch}"])
 
     async def commit_changes(
-        self, agent_id: str, message: str, files: Optional[list[str]] = None
+        self, agent_id: str, message: str, files: list[str] | None = None
     ) -> bool:
         """
         Commit changes in an agent's worktree.
@@ -177,7 +186,7 @@ class WorktreeManager:
         if not worktree_path:
             raise RuntimeError(f"Worktree for agent {agent_id} not found")
 
-        async def run_in_worktree(cmd: list[str]) -> asyncio.subprocess.Process:
+        async def run_in_worktree(cmd: list[str]) -> ProcessResult:
             return await self._run_git(cmd, cwd=worktree_path)
 
         # Add files
@@ -203,8 +212,8 @@ class WorktreeManager:
         return result.returncode == 0
 
     async def _run_git(
-        self, cmd: list[str], cwd: Optional[Path] = None
-    ) -> asyncio.subprocess.Process:
+        self, cmd: list[str], cwd: Path | None = None
+    ) -> ProcessResult:
         """
         Run a git command.
 
@@ -213,7 +222,7 @@ class WorktreeManager:
             cwd: Working directory (defaults to project_dir)
 
         Returns:
-            Completed process
+            Completed process result
         """
         if cwd is None:
             cwd = self.project_dir
@@ -226,13 +235,6 @@ class WorktreeManager:
         )
 
         stdout, stderr = await process.communicate()
-
-        # Create a mock process object with the results
-        class ProcessResult:
-            def __init__(self, returncode: int, stdout: str, stderr: str):
-                self.returncode = returncode
-                self.stdout = stdout
-                self.stderr = stderr
 
         return ProcessResult(
             process.returncode or 0,

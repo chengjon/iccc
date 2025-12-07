@@ -2,26 +2,34 @@
 
 import json
 import os
-from typing import Any, Optional
+from typing import Optional
 from uuid import UUID
 
 import redis.asyncio as redis
 
 from iccc.models.entities import Task
+from iccc.config import get_config
 
 
 class RedisTaskQueue:
     """Redis-based task queue with priority support."""
 
     def __init__(self, redis_url: Optional[str] = None) -> None:
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self.client: Optional[redis.Redis] = None
+        self.redis_url: str = redis_url if redis_url is not None else self._build_redis_url_from_config()
+        self.client: Optional[redis.Redis[str]] = None
 
         # Queue keys
         self.pending_queue = "iccc:tasks:pending"
         self.in_progress_queue = "iccc:tasks:in_progress"
         self.completed_queue = "iccc:tasks:completed"
         self.task_data_prefix = "iccc:task:"
+
+    def _build_redis_url_from_config(self) -> str:
+        """Constructs the Redis URL from the centralized configuration."""
+        config = get_config().redis
+        if config.password:
+            return f"redis://:{config.password}@{config.host}:{config.port}/{config.db}"
+        return f"redis://{config.host}:{config.port}/{config.db}"
 
     async def connect(self) -> None:
         """Establish Redis connection."""
@@ -50,9 +58,9 @@ class RedisTaskQueue:
         await self.client.set(task_key, task.model_dump_json())
 
         # Add to pending queue with priority
-        await self.client.zadd(self.pending_queue, {task_id: -priority})  # Negative for DESC order
+        await self.client.zadd(self.pending_queue, {task_id: priority})
 
-    async def dequeue(self, agent_id: str) -> Optional[Task]:
+    async def dequeue(self, agent_id: str) -> Task | None:
         """
         Dequeue the highest priority task.
 
@@ -126,7 +134,7 @@ class RedisTaskQueue:
         # Add to failed set
         await self.client.sadd("iccc:tasks:failed", task_id_str)
 
-    async def get_task(self, task_id: UUID) -> Optional[Task]:
+    async def get_task(self, task_id: UUID) -> Task | None:
         """Retrieve a task by ID."""
         if not self.client:
             raise RuntimeError("Redis client not connected")

@@ -1,16 +1,18 @@
 """Rate limit handler with model downgrading and caching."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from redis.asyncio import Redis
 
 from iccc.agents.model_selector import ModelSelector
-from iccc.models.entities import ModelTier, Task, TaskType
+from iccc.models.entities import ModelTier, Task
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,7 @@ class RateLimitHandler:
 
     def __init__(
         self,
-        redis_client: Optional[Redis] = None,
+        redis_client: Redis[str] | None = None,
         cache_ttl: int = 3600,  # 1 hour
         downgrade_threshold: float = 0.8,  # 80% of limit
     ) -> None:
@@ -69,7 +71,7 @@ class RateLimitHandler:
     async def select_model_with_limits(
         self,
         task: Task,
-        preferred_model: Optional[ModelTier] = None,
+        preferred_model: ModelTier | None = None,
     ) -> ModelTier:
         """
         Select the best model considering rate limits.
@@ -88,9 +90,10 @@ class RateLimitHandler:
             )
 
         # Check if task is critical (must use preferred model)
-        if task.is_critical:
+        # Assuming complexity > 4.5 means critical for now
+        if task.complexity and task.complexity.calculate_score() >= 4.5:
             logger.info(
-                f"Task {task.id} is critical, preserving {preferred_model.value}"
+                f"Task {task.id} is critical (high complexity), preserving {preferred_model.value}"
             )
             return preferred_model
 
@@ -191,7 +194,7 @@ class RateLimitHandler:
         self,
         task: Task,
         model: ModelTier,
-    ) -> Optional[Any]:
+    ) -> Any | None:
         """
         Check if cached result exists for this task.
 
@@ -276,7 +279,7 @@ class RateLimitHandler:
 
         return summary
 
-    def _downgrade_model(self, model: ModelTier) -> Optional[ModelTier]:
+    def _downgrade_model(self, model: ModelTier) -> ModelTier | None:
         """Get downgraded model tier."""
         return self.tier_hierarchy.get(model)
 

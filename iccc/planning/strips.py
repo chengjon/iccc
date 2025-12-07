@@ -1,8 +1,9 @@
 """STRIPS planner with A* search for task planning."""
 
 import heapq
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -58,7 +59,7 @@ class PlanNode:
     g_cost: float  # Cost from start
     h_cost: float  # Heuristic cost to goal
     parent: Optional["PlanNode"] = None
-    action: Optional[Action] = None
+    action: Action | None = None
 
     @property
     def f_cost(self) -> float:
@@ -72,7 +73,7 @@ class PlanNode:
 class STRIPSPlanner:
     """STRIPS planner using A* search."""
 
-    def __init__(self, heuristic: Optional[Callable[[State, State], float]] = None) -> None:
+    def __init__(self, heuristic: Callable[[State, State], float] | None = None) -> None:
         """
         Initialize planner.
 
@@ -88,7 +89,7 @@ class STRIPSPlanner:
         goal_state: State,
         actions: list[Action],
         max_iterations: int = 1000,
-    ) -> Optional[list[Action]]:
+    ) -> list[Action] | None:
         """
         Find a plan from initial state to goal state.
 

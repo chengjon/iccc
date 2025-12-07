@@ -1,6 +1,5 @@
 """Model selection strategy for Claude agents."""
 
-from typing import Optional
 
 from iccc.models.entities import ModelTier, TaskComplexity, TaskType
 
@@ -79,7 +78,7 @@ class ModelSelector:
 
     @classmethod
     def select_model(
-        cls, task_type: TaskType, complexity: Optional[TaskComplexity] = None
+        cls, task_type: TaskType, complexity: TaskComplexity | None = None
     ) -> ModelTier:
         """
         Select the appropriate model for a task.

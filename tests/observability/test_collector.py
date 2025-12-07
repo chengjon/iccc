@@ -1,6 +1,5 @@
 """Tests for event collection system."""
 
-import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -352,7 +351,10 @@ class TestEventCollector:
             # Mock AI client
             collector.ai_client = AsyncMock()
             mock_response = MagicMock()
-            mock_response.content = [MagicMock(text="Summary text")]
+            mock_content_block = MagicMock()
+            mock_content_block.type = "text"
+            mock_content_block.text = "Summary text"
+            mock_response.content = [mock_content_block]
             collector.ai_client.messages.create = AsyncMock(return_value=mock_response)
 
             callback = AsyncMock()

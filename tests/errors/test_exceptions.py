@@ -1,49 +1,48 @@
 """Tests for custom exception hierarchy."""
 
-import pytest
 from uuid import uuid4
 
 from iccc.errors.exceptions import (
-    # Base
-    ICCCError,
+    AgentBusyError,
+    AgentCrashedError,
     # Agent errors
     AgentError,
     AgentNotFoundError,
-    AgentBusyError,
-    AgentCrashedError,
-    # Task errors
-    TaskError,
-    TaskNotFoundError,
-    TaskDependencyError,
-    TaskTimeoutError,
-    TaskExecutionError,
-    # Planning errors
-    PlanningError,
-    PlanningFailedError,
-    DecompositionFailedError,
-    # Lock errors
-    LockError,
-    LockAcquisitionError,
-    LockTimeoutError,
-    # Worktree errors
-    WorktreeError,
-    WorktreeCreationError,
-    WorktreeMergeConflictError,
     # API errors
     APIError,
-    RateLimitError,
-    ModelOverloadedError,
-    # Queue errors
-    QueueError,
-    QueueEmptyError,
-    QueueConnectionError,
-    # Quality gate errors
-    QualityGateError,
-    QualityGateFailedError,
     # Config errors
     ConfigError,
     ConfigNotFoundError,
     ConfigValidationError,
+    DecompositionFailedError,
+    # Base
+    ICCCError,
+    LockAcquisitionError,
+    # Lock errors
+    LockError,
+    LockTimeoutError,
+    ModelOverloadedError,
+    # Planning errors
+    PlanningError,
+    PlanningFailedError,
+    # Quality gate errors
+    QualityGateError,
+    QualityGateFailedError,
+    QueueConnectionError,
+    QueueEmptyError,
+    # Queue errors
+    QueueError,
+    RateLimitError,
+    TaskDependencyError,
+    # Task errors
+    TaskError,
+    TaskExecutionError,
+    TaskNotFoundError,
+    TaskTimeoutError,
+    WorktreeCreationError,
+    # Worktree errors
+    WorktreeError,
+    WorktreeMergeConflictError,
 )
 
 

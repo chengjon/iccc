@@ -20,8 +20,6 @@ import json
 import os
 import re
 import sys
-from pathlib import Path
-from typing import Optional
 
 # ============================================================================
 # DANGEROUS PATTERNS - Commands that should be blocked
@@ -116,7 +114,7 @@ def load_hook_data() -> dict:
         return {}
 
 
-def get_tool_info() -> tuple[str, Optional[str]]:
+def get_tool_info() -> tuple[str, str | None]:
     """
     Get tool name and command from environment.
 
@@ -136,7 +134,7 @@ def get_tool_info() -> tuple[str, Optional[str]]:
     return tool_name, tool_command if tool_command else None
 
 
-def check_dangerous_patterns(command: str) -> Optional[str]:
+def check_dangerous_patterns(command: str) -> str | None:
     """
     Check if command matches any dangerous patterns.
 
@@ -152,7 +150,7 @@ def check_dangerous_patterns(command: str) -> Optional[str]:
     return None
 
 
-def check_wildcard_limits(command: str) -> Optional[str]:
+def check_wildcard_limits(command: str) -> str | None:
     """
     Check if command exceeds wildcard limits.
 
@@ -173,7 +171,7 @@ def check_wildcard_limits(command: str) -> Optional[str]:
     return None
 
 
-def check_production_paths(command: str) -> Optional[str]:
+def check_production_paths(command: str) -> str | None:
     """
     Check if command operates on production paths.
 
@@ -203,7 +201,7 @@ def check_production_paths(command: str) -> Optional[str]:
     return None
 
 
-def check_bash_command(command: str) -> Optional[str]:
+def check_bash_command(command: str) -> str | None:
     """
     Run all safety checks on a Bash command.
 

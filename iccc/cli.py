@@ -3,8 +3,6 @@
 import asyncio
 import sys
 from pathlib import Path
-from typing import Optional
-from uuid import UUID
 
 import click
 
@@ -35,7 +33,7 @@ def project() -> None:
 @project.command("init")
 @click.argument("directory", type=click.Path())
 @click.option("--name", help="Project name (defaults to directory name)")
-def project_init(directory: str, name: Optional[str]) -> None:
+def project_init(directory: str, name: str | None) -> None:
     """Initialize a new project."""
     async def _init() -> None:
         client = MongoDBClient()
@@ -96,7 +94,7 @@ def agent() -> None:
 @click.option("--project", "project_name", required=True, help="Project name")
 @click.option("--type", "agent_type", default="general", help="Agent type or preset")
 @click.option("--model", type=click.Choice(["haiku", "sonnet", "opus"]), help="Model tier")
-def agent_create(name: str, project_name: str, agent_type: str, model: Optional[str]) -> None:
+def agent_create(name: str, project_name: str, agent_type: str, model: str | None) -> None:
     """Create a new agent."""
     async def _create() -> None:
         client = MongoDBClient()
@@ -148,7 +146,7 @@ def agent_create(name: str, project_name: str, agent_type: str, model: Optional[
 
 @agent.command("list")
 @click.option("--project", "project_name", help="Filter by project")
-def agent_list(project_name: Optional[str]) -> None:
+def agent_list(project_name: str | None) -> None:
     """List agents."""
     async def _list() -> None:
         client = MongoDBClient()
@@ -222,7 +220,7 @@ def task_create(project_name: str, description: str, task_type: str) -> None:
         # Show recommended model
         recommended_model = ModelSelector.select_model(task_obj.task_type)
 
-        click.echo(f"✅ Task created")
+        click.echo("✅ Task created")
         click.echo(f"   ID: {task_obj.id}")
         click.echo(f"   Type: {task_type}")
         click.echo(f"   Recommended model: {recommended_model}")
@@ -233,7 +231,7 @@ def task_create(project_name: str, description: str, task_type: str) -> None:
 @task.command("list")
 @click.option("--project", "project_name", required=True, help="Project name")
 @click.option("--status", type=click.Choice(["pending", "in_progress", "completed", "failed"]))
-def task_list(project_name: str, status: Optional[str]) -> None:
+def task_list(project_name: str, status: str | None) -> None:
     """List tasks."""
     async def _list() -> None:
         client = MongoDBClient()
@@ -283,9 +281,63 @@ def list_presets() -> None:
         click.echo(f"  • {agent_name}")
 
 
+@cli.command("start")
+@click.option("--project", "project_name", required=True, help="Project name to orchestrate.")
+def start_orchestrator(project_name: str) -> None:
+    """Start the multi-agent orchestration engine for a project."""
+    from iccc.orchestrator import Orchestrator
+
+    async def _start() -> None:
+        client = MongoDBClient()
+        await client.connect()
+
+        project_repo = ProjectRepository(client)
+        project_obj = await project_repo.get_by_name(project_name)
+
+        if not project_obj:
+            await client.disconnect()
+            click.echo(f"❌ Project '{project_name}' not found", err=True)
+            sys.exit(1)
+
+        orchestrator = Orchestrator(
+            project_id=project_obj.id,
+            project_dir=project_obj.directory,
+        )
+
+        try:
+            click.echo(f"✨ Starting orchestrator for project '{project_name}'...")
+            await orchestrator.start()
+
+            # Start all agents associated with this project
+            agent_repo = AgentRepository(client)
+            agents = await agent_repo.list_by_project(project_obj.id)
+            if not agents:
+                click.echo(f"⚠️ No agents found for project '{project_name}'. Create agents using 'iccc agent create'.", err=True)
+            else:
+                for agent in agents:
+                    click.echo(f"🚀 Starting agent '{agent.name}' ({agent.id})...")
+                    await orchestrator.start_agent(agent.id)
+
+            click.echo("Orchestrator and agents started. Press Ctrl+C to stop.")
+            # Keep the orchestrator running
+            while True:
+                await asyncio.sleep(1) # Keep event loop alive
+        except asyncio.CancelledError:
+            click.echo("\n👋 Orchestrator stopped by user.")
+        except Exception as e:
+            click.echo(f"❌ An error occurred: {e}", err=True)
+            sys.exit(1)
+        finally:
+            await orchestrator.stop()
+            await client.disconnect()
+
+    asyncio.run(_start())
+
+
 def main() -> None:
     """Entry point for the CLI."""
     cli()
+
 
 
 if __name__ == "__main__":

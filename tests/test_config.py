@@ -8,17 +8,16 @@ from unittest.mock import patch
 import pytest
 
 from iccc.config import (
-    MongoDBConfig,
-    RedisConfig,
     AnthropicConfig,
-    OrchestrationConfig,
+    ICCCConfig,
+    MongoDBConfig,
     ObservabilityConfig,
+    OrchestrationConfig,
+    RedisConfig,
     RetryConfig,
     SecurityConfig,
-    ICCCConfig,
-    load_config,
     get_config,
-    reload_config,
+    load_config,
 )
 from iccc.errors.exceptions import ConfigNotFoundError, ConfigValidationError
 
@@ -371,3 +370,156 @@ class TestConfigFunctions:
 
             # Should be different instances after reload
             assert config1 is not config2
+
+
+class TestMergeEnvOverrides:
+    """Tests for merge_env_overrides method."""
+
+    def test_merge_no_env_vars_returns_self(self):
+        """Test merge returns same config when no env vars are set."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}, clear=True):
+            config = ICCCConfig()
+            merged = config.merge_env_overrides()
+            # Without env vars (except API key), should return self
+            assert merged.mongodb.uri == config.mongodb.uri
+            assert merged.redis.host == config.redis.host
+
+    def test_merge_mongodb_overrides(self):
+        """Test merging MongoDB env var overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_MONGODB_URI": "mongodb://override:27017",
+            "ICCC_MONGODB_DATABASE": "override_db",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig(
+                mongodb=MongoDBConfig(uri="mongodb://original:27017", database="original_db")
+            )
+            merged = config.merge_env_overrides()
+            assert merged.mongodb.uri == "mongodb://override:27017"
+            assert merged.mongodb.database == "override_db"
+
+    def test_merge_redis_overrides(self):
+        """Test merging Redis env var overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_REDIS_HOST": "redis-override",
+            "ICCC_REDIS_PORT": "6399",
+            "ICCC_REDIS_PASSWORD": "secret-password",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig()
+            merged = config.merge_env_overrides()
+            assert merged.redis.host == "redis-override"
+            assert merged.redis.port == 6399
+            assert merged.redis.password == "secret-password"
+
+    def test_merge_anthropic_overrides(self):
+        """Test merging Anthropic env var overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "override-api-key",
+            "ICCC_DEFAULT_MODEL": "claude-opus-4-20250514",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig()
+            merged = config.merge_env_overrides()
+            assert merged.anthropic.api_key == "override-api-key"
+            assert merged.anthropic.default_model == "claude-opus-4-20250514"
+
+    def test_merge_orchestration_overrides(self):
+        """Test merging orchestration env var overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_MAX_CONCURRENT_AGENTS": "15",
+            "ICCC_TASK_TIMEOUT": "9000",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig()
+            merged = config.merge_env_overrides()
+            assert merged.orchestration.max_concurrent_agents == 15
+            assert merged.orchestration.task_timeout_seconds == 9000
+
+    def test_merge_observability_overrides(self):
+        """Test merging observability env var overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_OBSERVABILITY_PORT": "9999",
+            "ICCC_ENABLE_AI_SUMMARIES": "false",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig()
+            merged = config.merge_env_overrides()
+            assert merged.observability.server_port == 9999
+            assert merged.observability.enable_ai_summaries is False
+
+    def test_merge_global_settings_overrides(self):
+        """Test merging global setting overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_LOG_LEVEL": "ERROR",
+            "ICCC_DATA_DIR": "/custom/data/dir",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig()
+            merged = config.merge_env_overrides()
+            assert merged.log_level == "ERROR"
+            assert merged.data_dir == "/custom/data/dir"
+
+    def test_merge_preserves_original_values(self):
+        """Test that merge preserves original values not overridden by env."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_LOG_LEVEL": "DEBUG",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            config = ICCCConfig(
+                mongodb=MongoDBConfig(uri="mongodb://custom:27017"),
+                redis=RedisConfig(host="custom-redis"),
+            )
+            merged = config.merge_env_overrides()
+            # These should be preserved
+            assert merged.mongodb.uri == "mongodb://custom:27017"
+            assert merged.redis.host == "custom-redis"
+            # This should be overridden
+            assert merged.log_level == "DEBUG"
+
+    def test_merge_enable_ai_summaries_variations(self):
+        """Test different boolean string variations for enable_ai_summaries."""
+        test_cases = [
+            ("true", True),
+            ("True", True),
+            ("TRUE", True),
+            ("1", True),
+            ("yes", True),
+            ("Yes", True),
+            ("false", False),
+            ("False", False),
+            ("0", False),
+            ("no", False),
+        ]
+        for env_value, expected in test_cases:
+            env_vars = {
+                "ANTHROPIC_API_KEY": "test-key",
+                "ICCC_ENABLE_AI_SUMMARIES": env_value,
+            }
+            with patch.dict(os.environ, env_vars, clear=True):
+                config = ICCCConfig()
+                merged = config.merge_env_overrides()
+                assert merged.observability.enable_ai_summaries is expected, (
+                    f"Expected {expected} for '{env_value}'"
+                )
+
+    def test_load_config_with_env_overrides(self):
+        """Test that load_config properly applies env overrides."""
+        env_vars = {
+            "ANTHROPIC_API_KEY": "test-key",
+            "ICCC_MONGODB_URI": "mongodb://env-host:27017",
+            "ICCC_REDIS_HOST": "env-redis",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            import iccc.config as config_module
+            config_module._config = None
+
+            config = load_config(use_env=True)
+            assert config.mongodb.uri == "mongodb://env-host:27017"
+            assert config.redis.host == "env-redis"

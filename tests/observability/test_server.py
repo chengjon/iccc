@@ -1,11 +1,9 @@
 """Tests for observability server."""
 
-import json
-import sqlite3
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest

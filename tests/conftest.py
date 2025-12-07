@@ -34,6 +34,7 @@ def agent_id():
 async def redis_client():
     """Create a mock Redis client for testing."""
     from unittest.mock import AsyncMock
+
     import redis.asyncio as redis
 
     mock_client = AsyncMock(spec=redis.Redis)
@@ -59,7 +60,7 @@ async def redis_client():
             return None
         # Sort by score (priority) and pop the highest
         task_queue.sort(key=lambda x: x[1])
-        task_id, score = task_queue.pop(0)
+        task_id, score = task_queue.pop()
         return [(task_id, score)]
 
     # Mock Redis operations

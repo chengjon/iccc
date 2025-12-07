@@ -2,10 +2,6 @@
 
 import asyncio
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
-
-from motor.motor_asyncio import AsyncIOMotorClient
 
 from iccc.db.repositories import MongoDBClient
 
@@ -16,7 +12,7 @@ class Migration:
     def __init__(self, version: str, description: str) -> None:
         self.version = version
         self.description = description
-        self.applied_at: Optional[datetime] = None
+        self.applied_at: datetime | None = None
 
     async def up(self, db_client: MongoDBClient) -> None:
         """Apply the migration."""
@@ -234,6 +230,70 @@ class AddWorktreePathToAgentMigration(Migration):
         await db.agents.update_many({}, {"$unset": {"worktree_path": ""}})
 
 
+class AddPromptTemplatesCollectionMigration(Migration):
+    """Add prompt_templates collection for reusable prompts."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "005_add_prompt_templates",
+            "Create prompt_templates collection with indexes",
+        )
+
+    async def up(self, db_client: MongoDBClient) -> None:
+        """Create prompt_templates collection with indexes."""
+        if not db_client.db:
+            raise RuntimeError("Database not connected")
+
+        db = db_client.db
+
+        # Create indexes for prompt_templates
+        await db.prompt_templates.create_index("id", unique=True)
+        await db.prompt_templates.create_index("name", unique=True)
+        await db.prompt_templates.create_index("category")
+
+        print("  Created prompt_templates collection with indexes")
+
+    async def down(self, db_client: MongoDBClient) -> None:
+        """Drop prompt_templates collection."""
+        if not db_client.db:
+            raise RuntimeError("Database not connected")
+
+        await db_client.db.prompt_templates.drop()
+
+
+class AddGoalsCollectionMigration(Migration):
+    """Add goals collection for HTN planning system."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "006_add_goals",
+            "Create goals collection with indexes for planning system",
+        )
+
+    async def up(self, db_client: MongoDBClient) -> None:
+        """Create goals collection with indexes."""
+        if not db_client.db:
+            raise RuntimeError("Database not connected")
+
+        db = db_client.db
+
+        # Create indexes for goals
+        await db.goals.create_index("id", unique=True)
+        await db.goals.create_index("project_id")
+        await db.goals.create_index("status")
+        await db.goals.create_index("priority")
+        await db.goals.create_index("parent_goal_id")
+
+        print("  Created goals collection with indexes")
+
+    async def down(self, db_client: MongoDBClient) -> None:
+        """Drop goals collection."""
+        if not db_client.db:
+            raise RuntimeError("Database not connected")
+
+        await db_client.db.goals.drop()
+
+
 def get_all_migrations() -> list[Migration]:
     """Get all registered migrations."""
     return [
@@ -241,10 +301,12 @@ def get_all_migrations() -> list[Migration]:
         AddTaskComplexityMigration(),
         AddFilesModifiedToTaskMigration(),
         AddWorktreePathToAgentMigration(),
+        AddPromptTemplatesCollectionMigration(),
+        AddGoalsCollectionMigration(),
     ]
 
 
-async def run_migrations(mongodb_url: Optional[str] = None) -> None:
+async def run_migrations(mongodb_url: str | None = None) -> None:
     """Run all pending migrations."""
     db_client = MongoDBClient(mongodb_url)
     await db_client.connect()
@@ -268,7 +330,7 @@ async def run_migrations(mongodb_url: Optional[str] = None) -> None:
         await db_client.disconnect()
 
 
-async def rollback_last_migration(mongodb_url: Optional[str] = None) -> None:
+async def rollback_last_migration(mongodb_url: str | None = None) -> None:
     """Rollback the last applied migration."""
     db_client = MongoDBClient(mongodb_url)
     await db_client.connect()

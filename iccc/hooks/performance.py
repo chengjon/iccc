@@ -1,10 +1,8 @@
 """Hook performance monitoring and metrics collection."""
 
-import time
-from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 from iccc.hooks.executor import HookExecutionResult
 
@@ -25,7 +23,7 @@ class HookMetrics:
     p99_time_ms: float = 0
     timeout_count: int = 0
     retry_count: int = 0
-    last_execution: Optional[datetime] = None
+    last_execution: datetime | None = None
     execution_times: list[float] = field(default_factory=list)
 
     def update(self, result: HookExecutionResult) -> None:
@@ -206,7 +204,7 @@ class HookPerformanceMonitor:
         if len(self.alerts) > 100:
             self.alerts = self.alerts[-100:]
 
-    def get_hook_metrics(self, hook_name: str) -> Optional[dict[str, Any]]:
+    def get_hook_metrics(self, hook_name: str) -> dict[str, Any] | None:
         """Get metrics for a specific hook."""
         if hook_name in self.metrics:
             return self.metrics[hook_name].to_dict()
@@ -217,7 +215,7 @@ class HookPerformanceMonitor:
         return [metrics.to_dict() for metrics in self.metrics.values()]
 
     def get_alerts(
-        self, severity: Optional[str] = None, last_n: Optional[int] = None
+        self, severity: str | None = None, last_n: int | None = None
     ) -> list[dict[str, Any]]:
         """
         Get performance alerts.

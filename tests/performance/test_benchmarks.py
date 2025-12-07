@@ -55,7 +55,7 @@ class TestEventCollectionPerformance:
         events_per_second = num_events / elapsed
 
         print(f"\n{'='*60}")
-        print(f"Event Collection Performance")
+        print("Event Collection Performance")
         print(f"{'='*60}")
         print(f"Total events: {num_events:,}")
         print(f"Time elapsed: {elapsed:.2f}s")
@@ -113,7 +113,7 @@ class TestEventCollectionPerformance:
         speedup = time_full / time_sampled
 
         print(f"\n{'='*60}")
-        print(f"Sampling Performance Impact")
+        print("Sampling Performance Impact")
         print(f"{'='*60}")
         print(f"100% sampling: {time_full:.4f}s")
         print(f"10% sampling: {time_sampled:.4f}s")
@@ -162,7 +162,7 @@ class TestPlanningPerformance:
             results.append({"facts": num_facts, "time": elapsed, "found": plan is not None})
 
         print(f"\n{'='*60}")
-        print(f"STRIPS Scalability")
+        print("STRIPS Scalability")
         print(f"{'='*60}")
         for result in results:
             print(
@@ -230,7 +230,7 @@ class TestPlanningPerformance:
         per_decomposition = elapsed / num_runs * 1000  # Convert to ms
 
         print(f"\n{'='*60}")
-        print(f"HTN Decomposition Performance")
+        print("HTN Decomposition Performance")
         print(f"{'='*60}")
         print(f"Decompositions: {num_runs:,}")
         print(f"Total time: {elapsed:.3f}s")
@@ -275,7 +275,7 @@ class TestQueuePerformance:
         dequeue_time = time.time() - start
 
         print(f"\n{'='*60}")
-        print(f"Task Queue Performance")
+        print("Task Queue Performance")
         print(f"{'='*60}")
         print(f"Enqueue: {num_tasks} tasks in {enqueue_time:.3f}s")
         print(f"  Throughput: {num_tasks / enqueue_time:,.0f} tasks/sec")
@@ -323,7 +323,7 @@ class TestMemoryUsage:
         total_increase = sum(stat.size_diff for stat in top_stats) / 1024 / 1024  # MB
 
         print(f"\n{'='*60}")
-        print(f"Memory Usage - Event Collector")
+        print("Memory Usage - Event Collector")
         print(f"{'='*60}")
         print(f"Memory increase after 10K events: {total_increase:.2f} MB")
 

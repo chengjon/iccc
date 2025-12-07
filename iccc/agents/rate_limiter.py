@@ -1,15 +1,18 @@
 """Rate limiting for Claude API with token bucket algorithm."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from redis.asyncio import Redis
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-from iccc.models.entities import ModelTier
 from iccc.errors.exceptions import RateLimitError
+from iccc.models.entities import ModelTier
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,7 @@ class TokenBucket:
     """Token bucket algorithm for rate limiting."""
 
     def __init__(
-        self, capacity: int, refill_rate: float, redis_client: Optional[Redis] = None
+        self, capacity: int, refill_rate: float, redis_client: Redis[str] | None = None
     ) -> None:
         """
         Initialize token bucket.
@@ -157,7 +160,7 @@ class TokenBucket:
 
         while True:
             now = time.time()
-            result = await self.redis_client.eval(
+            result = await self.redis_client.eval( # type: ignore[no-untyped-call]
                 lua_script,
                 1,
                 key,
@@ -182,7 +185,7 @@ class TokenBucket:
 class RateLimiter:
     """Rate limiter for Claude API with per-model limits."""
 
-    def __init__(self, redis_client: Optional[Redis] = None) -> None:
+    def __init__(self, redis_client: Redis[str] | None = None) -> None:
         self.redis_client = redis_client
         self._buckets: dict[str, dict[str, TokenBucket]] = {}
 
@@ -292,7 +295,7 @@ class RateLimiter:
 class AdaptiveRateLimiter(RateLimiter):
     """Rate limiter that adapts based on API responses."""
 
-    def __init__(self, redis_client: Optional[Redis] = None) -> None:
+    def __init__(self, redis_client: Redis[str] | None = None) -> None:
         super().__init__(redis_client)
         self._backoff_until: dict[str, float] = {}
 
@@ -334,10 +337,10 @@ class AdaptiveRateLimiter(RateLimiter):
 
 
 # Global rate limiter instance
-_rate_limiter: Optional[AdaptiveRateLimiter] = None
+_rate_limiter: AdaptiveRateLimiter | None = None
 
 
-def get_rate_limiter(redis_client: Optional[Redis] = None) -> AdaptiveRateLimiter:
+def get_rate_limiter(redis_client: Redis[str] | None = None) -> AdaptiveRateLimiter:
     """Get or create global rate limiter."""
     global _rate_limiter
     if _rate_limiter is None:

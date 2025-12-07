@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -25,7 +25,7 @@ class RedisConfig(BaseModel):
     host: str = Field(default="localhost")
     port: int = Field(default=6379, ge=1, le=65535)
     db: int = Field(default=0, ge=0)
-    password: Optional[str] = None
+    password: str | None = None
     max_connections: int = Field(default=50, ge=1)
 
 
@@ -92,7 +92,7 @@ class SecurityConfig(BaseModel):
     """Security configuration."""
 
     enable_pre_tool_hooks: bool = Field(default=True)
-    dangerous_patterns_file: Optional[str] = None
+    dangerous_patterns_file: str | None = None
     max_wildcard_count: int = Field(default=3, ge=0)
     block_production_changes: bool = Field(default=True)
     allowed_tools: list[str] = Field(
@@ -142,19 +142,42 @@ class ICCCConfig(BaseModel):
         """Load configuration from environment variables."""
         config_dict: dict[str, Any] = {}
 
-        # MongoDB
-        if mongo_uri := os.getenv("ICCC_MONGODB_URI"):
+        # MongoDB - support both ICCC_ prefix and direct env vars
+        mongo_host = os.getenv("MONGODB_HOST") or os.getenv("ICCC_MONGODB_HOST")
+        mongo_port = os.getenv("MONGODB_PORT") or os.getenv("ICCC_MONGODB_PORT")
+        mongo_username = os.getenv("MONGODB_USERNAME") or os.getenv("ICCC_MONGODB_USERNAME")
+        mongo_password = os.getenv("MONGODB_PASSWORD") or os.getenv("ICCC_MONGODB_PASSWORD")
+        mongo_dbname = os.getenv("MONGODB_DBNAME") or os.getenv("ICCC_MONGODB_DATABASE")
+
+        # Build MongoDB URI from components or use full URI
+        if mongo_uri := (os.getenv("MONGODB_URL") or os.getenv("ICCC_MONGODB_URI")):
             config_dict.setdefault("mongodb", {})["uri"] = mongo_uri
-        if mongo_db := os.getenv("ICCC_MONGODB_DATABASE"):
+        elif mongo_host and mongo_dbname:
+            # Build URI from components
+            port = mongo_port or "27017"
+            if mongo_username and mongo_password:
+                mongo_uri = f"mongodb://{mongo_username}:{mongo_password}@{mongo_host}:{port}/{mongo_dbname}"
+            else:
+                mongo_uri = f"mongodb://{mongo_host}:{port}/{mongo_dbname}"
+            config_dict.setdefault("mongodb", {})["uri"] = mongo_uri
+            config_dict.setdefault("mongodb", {})["database"] = mongo_dbname
+        elif mongo_db := os.getenv("ICCC_MONGODB_DATABASE"):
             config_dict.setdefault("mongodb", {})["database"] = mongo_db
 
-        # Redis
-        if redis_host := os.getenv("ICCC_REDIS_HOST"):
+        # Redis - support both formats
+        redis_host = os.getenv("REDIS_HOST") or os.getenv("ICCC_REDIS_HOST")
+        redis_port = os.getenv("REDIS_PORT") or os.getenv("ICCC_REDIS_PORT")
+        redis_password = os.getenv("REDIS_PASSWORD") or os.getenv("ICCC_REDIS_PASSWORD")
+        redis_db = os.getenv("REDIS_DB") or os.getenv("ICCC_REDIS_DB")
+
+        if redis_host:
             config_dict.setdefault("redis", {})["host"] = redis_host
-        if redis_port := os.getenv("ICCC_REDIS_PORT"):
+        if redis_port:
             config_dict.setdefault("redis", {})["port"] = int(redis_port)
-        if redis_password := os.getenv("ICCC_REDIS_PASSWORD"):
+        if redis_password:
             config_dict.setdefault("redis", {})["password"] = redis_password
+        if redis_db:
+            config_dict.setdefault("redis", {})["db"] = int(redis_db)
 
         # Anthropic
         if api_key := os.getenv("ANTHROPIC_API_KEY"):
@@ -198,34 +221,93 @@ class ICCCConfig(BaseModel):
 
     def merge_env_overrides(self) -> "ICCCConfig":
         """Merge environment variable overrides into config."""
-        env_config = self.from_env()
+        updates: dict[str, Any] = {}
 
-        # Merge non-default values from env_config
-        merged_data = self.model_dump()
+        # MongoDB overrides - support both formats
+        mongo_host = os.getenv("MONGODB_HOST") or os.getenv("ICCC_MONGODB_HOST")
+        mongo_port = os.getenv("MONGODB_PORT") or os.getenv("ICCC_MONGODB_PORT")
+        mongo_username = os.getenv("MONGODB_USERNAME") or os.getenv("ICCC_MONGODB_USERNAME")
+        mongo_password = os.getenv("MONGODB_PASSWORD") or os.getenv("ICCC_MONGODB_PASSWORD")
+        mongo_dbname = os.getenv("MONGODB_DBNAME") or os.getenv("ICCC_MONGODB_DATABASE")
 
-        for section, section_data in env_config.model_dump().items():
-            if isinstance(section_data, dict):
-                for key, value in section_data.items():
-                    # Only override if value is different from default
-                    default_section = getattr(ICCCConfig(), section)
-                    if isinstance(default_section, BaseModel):
-                        default_value = getattr(default_section, key, None)
-                        if value != default_value:
-                            merged_data.setdefault(section, {})[key] = value
+        if mongo_uri := (os.getenv("MONGODB_URL") or os.getenv("ICCC_MONGODB_URI")):
+            updates.setdefault("mongodb", {})["uri"] = mongo_uri
+        elif mongo_host and mongo_dbname:
+            port = mongo_port or "27017"
+            if mongo_username and mongo_password:
+                mongo_uri = f"mongodb://{mongo_username}:{mongo_password}@{mongo_host}:{port}/{mongo_dbname}"
             else:
-                # Top-level setting
-                if value != getattr(ICCCConfig(), section):
-                    merged_data[section] = value
+                mongo_uri = f"mongodb://{mongo_host}:{port}/{mongo_dbname}"
+            updates.setdefault("mongodb", {})["uri"] = mongo_uri
+            updates.setdefault("mongodb", {})["database"] = mongo_dbname
+        elif mongo_db := os.getenv("ICCC_MONGODB_DATABASE"):
+            updates.setdefault("mongodb", {})["database"] = mongo_db
 
-        return ICCCConfig(**merged_data)
+        # Redis overrides - support both formats
+        redis_host = os.getenv("REDIS_HOST") or os.getenv("ICCC_REDIS_HOST")
+        redis_port = os.getenv("REDIS_PORT") or os.getenv("ICCC_REDIS_PORT")
+        redis_password = os.getenv("REDIS_PASSWORD") or os.getenv("ICCC_REDIS_PASSWORD")
+        redis_db = os.getenv("REDIS_DB") or os.getenv("ICCC_REDIS_DB")
+
+        if redis_host:
+            updates.setdefault("redis", {})["host"] = redis_host
+        if redis_port:
+            updates.setdefault("redis", {})["port"] = int(redis_port)
+        if redis_password:
+            updates.setdefault("redis", {})["password"] = redis_password
+        if redis_db:
+            updates.setdefault("redis", {})["db"] = int(redis_db)
+
+        # Anthropic overrides
+        if api_key := os.getenv("ANTHROPIC_API_KEY"):
+            updates.setdefault("anthropic", {})["api_key"] = api_key
+        if model := os.getenv("ICCC_DEFAULT_MODEL"):
+            updates.setdefault("anthropic", {})["default_model"] = model
+
+        # Orchestration overrides
+        if max_agents := os.getenv("ICCC_MAX_CONCURRENT_AGENTS"):
+            updates.setdefault("orchestration", {})["max_concurrent_agents"] = int(
+                max_agents
+            )
+        if timeout := os.getenv("ICCC_TASK_TIMEOUT"):
+            updates.setdefault("orchestration", {})["task_timeout_seconds"] = int(
+                timeout
+            )
+
+        # Observability overrides
+        if server_port := os.getenv("ICCC_OBSERVABILITY_PORT"):
+            updates.setdefault("observability", {})["server_port"] = int(server_port)
+        if enable_ai := os.getenv("ICCC_ENABLE_AI_SUMMARIES"):
+            updates.setdefault("observability", {})[
+                "enable_ai_summaries"
+            ] = enable_ai.lower() in ("true", "1", "yes")
+
+        # Global setting overrides
+        if log_level := os.getenv("ICCC_LOG_LEVEL"):
+            updates["log_level"] = log_level
+        if data_dir := os.getenv("ICCC_DATA_DIR"):
+            updates["data_dir"] = data_dir
+
+        if not updates:
+            return self
+
+        # Create new config with merged values
+        current = self.model_dump()
+        for section, values in updates.items():
+            if isinstance(values, dict) and section in current:
+                current[section].update(values)
+            else:
+                current[section] = values
+
+        return ICCCConfig(**current)
 
 
 # Global configuration instance
-_config: Optional[ICCCConfig] = None
+_config: ICCCConfig | None = None
 
 
 def load_config(
-    config_path: Optional[Path] = None, use_env: bool = True
+    config_path: Path | None = None, use_env: bool = True
 ) -> ICCCConfig:
     """
     Load configuration with environment overrides.
@@ -261,7 +343,7 @@ def get_config() -> ICCCConfig:
     return _config
 
 
-def reload_config(config_path: Optional[Path] = None) -> ICCCConfig:
+def reload_config(config_path: Path | None = None) -> ICCCConfig:
     """Reload configuration from file and environment."""
     global _config
     _config = None

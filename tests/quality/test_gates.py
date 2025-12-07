@@ -1,21 +1,19 @@
 """Tests for quality gate system."""
 
-import asyncio
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from iccc.quality.gates import (
-    GateStatus,
     GateResult,
-    QualityGate,
+    GateStatus,
     LintGate,
-    TypeCheckGate,
-    TestGate,
-    SecurityGate,
+    QualityGate,
     QualityGateRunner,
+    SecurityGate,
+    TestGate,
+    TypeCheckGate,
 )
 
 

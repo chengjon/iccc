@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 # Path to safety check script
 SCRIPT_PATH = Path(__file__).parent.parent.parent / "iccc" / "hooks" / "scripts" / "safety_check.py"
 

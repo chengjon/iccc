@@ -2,13 +2,10 @@
 
 import asyncio
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
-
-from iccc.models.entities import HookEvent
+from typing import Any
 
 
 class HookPriority(str, Enum):
@@ -25,8 +22,8 @@ class HookExecutionResult:
     hook_name: str
     success: bool
     execution_time_ms: float
-    output: Optional[str] = None
-    error: Optional[str] = None
+    output: str | None = None
+    error: str | None = None
     retry_count: int = 0
     timed_out: bool = False
 
@@ -41,7 +38,7 @@ class HookConfig:
     timeout_ms: int = 100
     max_retries: int = 0
     retry_delay_ms: int = 100
-    env: Optional[dict[str, str]] = None
+    env: dict[str, str] | None = None
 
 
 class HookExecutor:
@@ -68,7 +65,7 @@ class HookExecutor:
         self,
         hooks: list[HookConfig],
         data: dict[str, Any],
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Execute a list of hooks with proper ordering and parallelization.
@@ -245,7 +242,7 @@ class HookExecutor:
                     error=stderr.decode("utf-8") if stderr and process.returncode != 0 else None,
                 )
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Kill the process
                 process.kill()
                 await process.wait()

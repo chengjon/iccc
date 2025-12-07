@@ -1,24 +1,23 @@
 """Litestar API server for observability with SQLite storage and WebSocket."""
 
-import asyncio
 import json
 import os
 import sqlite3
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
 from uuid import UUID
 
 from litestar import Litestar, WebSocket, get, websocket
 from litestar.channels import ChannelsPlugin
 from litestar.channels.backends.memory import MemoryChannelsBackend
 from litestar.config.cors import CORSConfig
-from litestar.datastructures import State
-from litestar.response import Response
 
 from iccc.models.entities import HookEvent
-from iccc.observability.collector import EventAggregator, EventCollector
+from iccc.observability.collector import EventCollector
+from iccc.config import get_config
 
 
 class EventStore:
@@ -26,7 +25,7 @@ class EventStore:
 
     def __init__(self, db_path: str = "./data/events.db") -> None:
         self.db_path = db_path
-        self.conn: Optional[sqlite3.Connection] = None
+        self.conn: sqlite3.Connection | None = None
 
         # Ensure directory exists
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +74,7 @@ class EventStore:
 
         self.conn.commit()
 
-    def insert_events(self, events: list[HookEvent], ai_summary: Optional[str] = None) -> None:
+    def insert_events(self, events: list[HookEvent], ai_summary: str | None = None) -> None:
         """Insert a batch of events."""
         if not self.conn:
             return
@@ -185,8 +184,8 @@ class EventStore:
 
 
 # Global state
-event_store: Optional[EventStore] = None
-event_collector: Optional[EventCollector] = None
+event_store: EventStore | None = None
+event_collector: EventCollector | None = None
 channels_backend = MemoryChannelsBackend()
 
 
@@ -196,7 +195,7 @@ async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
     global event_store, event_collector
 
     # Initialize event store
-    db_path = os.getenv("SQLITE_PATH", "./data/events.db")
+    db_path = get_config().observability.sqlite_path
     event_store = EventStore(db_path)
     event_store.connect()
 
@@ -209,7 +208,7 @@ async def lifespan(app: Litestar) -> AsyncGenerator[None, None]:
     )
 
     # Register flush callback
-    async def on_flush(events: list[HookEvent], summary: Optional[str]) -> None:
+    async def on_flush(events: list[HookEvent], summary: str | None) -> None:
         if event_store:
             event_store.insert_events(events, summary)
 

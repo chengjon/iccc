@@ -1,6 +1,6 @@
 """Predefined workflow templates for common software development tasks."""
 
-from iccc.planning.htn import CompoundTask, HTNPlanner, Method, PrimitiveTask
+from iccc.planning.htn import CompoundTask, HTNPlanner, PrimitiveTask
 
 
 class WorkflowTemplates:

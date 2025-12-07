@@ -1,11 +1,9 @@
 """Quality gate system for code validation."""
 
 import asyncio
-import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
 
 
 class GateStatus(str, Enum):
@@ -23,7 +21,7 @@ class GateResult:
     gate_name: str
     status: GateStatus
     message: str
-    details: Optional[str] = None
+    details: str | None = None
 
 
 class QualityGate:
@@ -223,7 +221,7 @@ class SecurityGate(QualityGate):
 class QualityGateRunner:
     """Runner for multiple quality gates."""
 
-    def __init__(self, gates: Optional[list[QualityGate]] = None) -> None:
+    def __init__(self, gates: list[QualityGate] | None = None) -> None:
         self.gates = gates or self.default_gates()
 
     @staticmethod
