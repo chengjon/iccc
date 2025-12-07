@@ -60,6 +60,10 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--cov=iccc --cov-report=term-missing --cov-report=html"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "asyncio: marks tests as async tests (automatically applied by pytest-asyncio)",
+]
 
 [tool.coverage.run]
 source = ["iccc"]

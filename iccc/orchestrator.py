@@ -1,6 +1,7 @@
 """Main orchestrator for coordinating multiple agents."""
 
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID
@@ -12,8 +13,10 @@ from iccc.hooks.manager import HookManager
 from iccc.isolation.worktree import WorktreeManager
 from iccc.locks.file_lock import FileLockManager
 from iccc.models.entities import Agent, AgentStatus, Message, Task, TaskStatus, TaskType
-from iccc.planning.templates import TaskDecomposer
+from iccc.planning.templates import TaskDecomposer  # Import from templates.py module
 from iccc.queue.redis_queue import RedisTaskQueue
+
+logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
@@ -205,8 +208,13 @@ class Orchestrator:
                 if task_count > 0 and task_count % sync_interval == 0:
                     try:
                         await self.worktree_manager.sync_worktree(agent.id)
+                        logger.debug(f"Synced worktree for agent {agent.id}")
                     except Exception as e:
-                        print(f"Warning: Failed to sync worktree for {agent.id}: {e}")
+                        logger.warning(
+                            f"Failed to sync worktree for agent {agent.id}: {e}",
+                            exc_info=True,
+                            extra={"agent_id": agent.id, "task_count": task_count},
+                        )
 
                 # Dequeue a task
                 task = await self.task_queue.dequeue(agent.id)
@@ -221,10 +229,14 @@ class Orchestrator:
                 task_count += 1
 
             except asyncio.CancelledError:
+                logger.info(f"Agent {agent.id} worker cancelled")
                 break
             except Exception as e:
-                # Log error and continue
-                print(f"Agent {agent.id} error: {e}")
+                logger.error(
+                    f"Agent {agent.id} worker error: {e}",
+                    exc_info=True,
+                    extra={"agent_id": agent.id, "task_count": task_count},
+                )
                 await asyncio.sleep(5)
 
     async def _execute_task(self, agent: Agent, task: Task) -> None:
@@ -290,6 +302,16 @@ class Orchestrator:
             )
 
         except Exception as e:
+            logger.error(
+                f"Task {task.id} execution failed: {e}",
+                exc_info=True,
+                extra={
+                    "task_id": str(task.id),
+                    "agent_id": agent.id,
+                    "task_type": task.task_type,
+                    "description": task.description,
+                },
+            )
             # Mark task as failed
             task.status = TaskStatus.FAILED
             task.error = str(e)

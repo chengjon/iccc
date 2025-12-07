@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # Project Schemas
@@ -30,6 +30,8 @@ class ProjectUpdate(BaseModel):
 class ProjectResponse(BaseModel):
     """Schema for project response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     directory: str
@@ -39,9 +41,6 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        from_attributes = True
 
     @classmethod
     def model_validate(cls, obj):
@@ -77,6 +76,8 @@ class AgentUpdate(BaseModel):
 class AgentResponse(BaseModel):
     """Schema for agent response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     agent_id: str
     agent_type: str
@@ -88,9 +89,6 @@ class AgentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any]
-
-    class Config:
-        from_attributes = True
 
 
 # Task Schemas
@@ -118,6 +116,8 @@ class TaskUpdate(BaseModel):
 class TaskResponse(BaseModel):
     """Schema for task response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     project_id: UUID
     description: str
@@ -132,9 +132,6 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     completed_at: datetime | None
     metadata: dict[str, Any]
-
-    class Config:
-        from_attributes = True
 
 
 # Prompt Schemas
@@ -151,6 +148,8 @@ class PromptCreate(BaseModel):
 class PromptResponse(BaseModel):
     """Schema for prompt response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     name: str
     template: str
@@ -158,9 +157,6 @@ class PromptResponse(BaseModel):
     variables: list[str]
     created_at: datetime
     metadata: dict[str, Any]
-
-    class Config:
-        from_attributes = True
 
 
 # Error Response Schema

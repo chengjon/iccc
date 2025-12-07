@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,8 @@ from iccc.models.entities import Agent, AgentStatus, ModelTier
 
 if TYPE_CHECKING:
     from iccc.db.repositories import AgentRepository
+
+logger = logging.getLogger(__name__)
 
 
 class AgentLifecycleManager:
@@ -83,8 +86,14 @@ class AgentLifecycleManager:
                     agent_id, branch=branch
                 )
                 worktree_path = str(wt_path)
+                logger.info(f"Created worktree for agent {agent_id} at {worktree_path}")
             except Exception as e:
-                raise RuntimeError(f"Failed to create worktree for agent {agent_id}: {e}")
+                logger.error(
+                    f"Failed to create worktree for agent {agent_id}",
+                    exc_info=True,
+                    extra={"agent_id": agent_id, "branch": branch},
+                )
+                raise RuntimeError(f"Failed to create worktree for agent {agent_id}: {e}") from e
 
         # Create agent instance
         agent = Agent(
@@ -248,8 +257,13 @@ class AgentLifecycleManager:
         if cleanup_worktree and agent.worktree_path:
             try:
                 await self.worktree_manager.remove_worktree(agent_id)
-            except Exception:
-                pass  # Best effort cleanup
+                logger.info(f"Removed worktree for agent {agent_id}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to cleanup worktree for agent {agent_id}: {e}",
+                    exc_info=True,
+                    extra={"agent_id": agent_id, "worktree_path": agent.worktree_path},
+                )
 
         # Remove from repository
         if self.agent_repository:
@@ -311,9 +325,14 @@ class AgentLifecycleManager:
             try:
                 await self.destroy_agent(agent.id, cleanup_worktree=True)
                 count += 1
-            except Exception:
-                pass  # Best effort
+            except Exception as e:
+                logger.error(
+                    f"Failed to cleanup agent {agent.id}: {e}",
+                    exc_info=True,
+                    extra={"agent_id": agent.id},
+                )
 
+        logger.info(f"Cleaned up {count}/{len(agents)} agents")
         return count
 
     async def _get_agent(self, agent_id: str) -> Agent:
