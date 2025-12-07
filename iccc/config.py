@@ -5,9 +5,15 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 
 from iccc.errors.exceptions import ConfigNotFoundError, ConfigValidationError
+
+# Load .env file at module import time
+env_file = Path(__file__).parent.parent / ".env"
+if env_file.exists():
+    load_dotenv(env_file)
 
 
 class MongoDBConfig(BaseModel):

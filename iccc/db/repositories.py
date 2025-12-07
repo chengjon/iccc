@@ -30,10 +30,12 @@ class MongoDBClient:
     async def connect(self) -> None:
         """Establish database connection."""
         self.client = AsyncIOMotorClient(self.mongodb_url)
-        self.db = self.client.get_database()
+        # Get database name from config
+        db_name = get_config().mongodb.database
+        self.db = self.client[db_name]
 
-        # Create indexes
-        await self._create_indexes()
+        # Note: Indexes are created by init_db.py, not here
+        # This allows repositories to be used without automatic index creation
 
     async def disconnect(self) -> None:
         """Close database connection."""
@@ -42,7 +44,7 @@ class MongoDBClient:
 
     async def _create_indexes(self) -> None:
         """Create database indexes for performance."""
-        if not self.db:
+        if self.db is None:
             return
 
         # Projects indexes
@@ -79,7 +81,7 @@ class ProjectRepository:
     @property
     def collection(self) -> Any:
         """Get projects collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.projects
 
@@ -136,7 +138,7 @@ class AgentRepository:
     @property
     def collection(self) -> Any:
         """Get agents collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.agents
 
@@ -206,7 +208,7 @@ class TaskRepository:
     @property
     def collection(self) -> Any:
         """Get tasks collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.tasks
 
@@ -297,7 +299,7 @@ class SessionRepository:
     @property
     def collection(self) -> Any:
         """Get sessions collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.sessions
 
@@ -344,7 +346,7 @@ class HookEventRepository:
     @property
     def collection(self) -> Any:
         """Get hook_events collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.hook_events
 
@@ -397,7 +399,7 @@ class PromptTemplateRepository:
     @property
     def collection(self) -> Any:
         """Get prompt_templates collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.prompt_templates
 
@@ -462,7 +464,7 @@ class GoalRepository:
     @property
     def collection(self) -> Any:
         """Get goals collection."""
-        if not self.db_client.db:
+        if self.db_client.db is None:
             raise RuntimeError("Database not connected")
         return self.db_client.db.goals
 
