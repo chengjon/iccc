@@ -1,8 +1,7 @@
 """Subagent configuration loading system."""
 
-import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -18,9 +17,9 @@ class SubagentConfig:
         description: str,
         model: ModelTier,
         system_prompt: str,
-        tools: Optional[list[str]] = None,
-        specialization: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        tools: list[str] | None = None,
+        specialization: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         self.name = name
         self.description = description
@@ -45,7 +44,7 @@ class SubagentLoader:
     ]
 
     @classmethod
-    def load_config(cls, agent_name: str, cli_path: Optional[str] = None) -> SubagentConfig:
+    def load_config(cls, agent_name: str, cli_path: str | None = None) -> SubagentConfig:
         """
         Load agent configuration from first matching location.
 
@@ -176,3 +175,55 @@ class SubagentLoader:
         agents.update(PresetAgents.PRESETS.keys())
 
         return sorted(agents)
+
+    @classmethod
+    def list_templates(cls) -> list[str]:
+        """
+        List available agent templates.
+
+        Returns:
+            List of template names
+        """
+        from iccc.agents.meta_agent import MetaAgent
+
+        meta = MetaAgent()
+        return meta.list_templates()
+
+    @classmethod
+    async def create_from_template(
+        cls,
+        name: str,
+        specialization: str,
+        template: str | None = None,
+        complexity: str = "moderate",
+        output_dir: Path | None = None,
+    ) -> Path:
+        """
+        Create a new agent from a template.
+
+        Args:
+            name: Agent name (e.g., "api-documenter")
+            specialization: Agent specialization description
+            template: Base template to use (auto-selected if None)
+            complexity: Task complexity (simple/moderate/complex)
+            output_dir: Output directory (default: .claude/agents)
+
+        Returns:
+            Path to created agent configuration file
+
+        Example:
+            >>> path = await SubagentLoader.create_from_template(
+            ...     name="api-documenter",
+            ...     specialization="API documentation and OpenAPI specs",
+            ...     complexity="simple"
+            ... )
+        """
+        from iccc.agents.meta_agent import generate_agent
+
+        return await generate_agent(
+            name=name,
+            specialization=specialization,
+            base_template=template,
+            complexity=complexity,
+            output_dir=output_dir,
+        )
