@@ -2,16 +2,20 @@
 
 import asyncio
 import json
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from anthropic import AsyncAnthropic
 
 from iccc.models.entities import HookEvent
 from iccc.config import get_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -71,11 +75,13 @@ class EventCollector:
         batch_timeout: int = 5,
         sample_rate: float = 1.0,
         enable_ai_summaries: bool = True,
+        storage: Any | None = None,  # EventStorage instance
     ) -> None:
         self.batch_size = batch_size
         self.batch_timeout = batch_timeout
         self.sampler = EventSampler(sample_rate)
         self.enable_ai_summaries = enable_ai_summaries
+        self.storage = storage
 
         # Current batch
         self.current_batch = EventBatch()
@@ -156,6 +162,14 @@ class EventCollector:
         # Create new batch
         self.current_batch = EventBatch()
 
+        # Store events to storage backend if available
+        if self.storage:
+            try:
+                await self.storage.store_events(events)
+            except Exception as e:
+                logger.error(f"Failed to store events to storage: {e}")
+                # Continue even if storage fails (graceful degradation)
+
         # Generate AI summary if enabled
         summary = None
         if self.enable_ai_summaries and self.ai_client:
@@ -170,7 +184,7 @@ class EventCollector:
                     callback(events, summary)
             except Exception as e:
                 # Don't let callback failures stop flushing
-                print(f"Flush callback error: {e}")
+                logger.error(f"Flush callback error: {e}")
 
     async def _generate_ai_summary(self, events: list[HookEvent]) -> str | None:
         """
@@ -211,9 +225,81 @@ Focus on: what tasks were attempted, any errors/warnings, and overall progress."
                 return response.content[0].text
 
         except Exception as e:
-            print(f"AI summary generation failed: {e}")
+            logger.error(f"AI summary generation failed: {e}")
 
         return None
+
+    async def query_events(
+        self,
+        session_id: UUID | None = None,
+        event_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[HookEvent]:
+        """
+        Query stored events.
+
+        Args:
+            session_id: Filter by session ID
+            event_type: Filter by event type
+            start_time: Filter events after this time
+            end_time: Filter events before this time
+            limit: Maximum number of events
+            offset: Pagination offset
+
+        Returns:
+            List of matching events
+        """
+        if not self.storage:
+            return []
+
+        try:
+            return await self.storage.query_events(
+                session_id=session_id,
+                event_type=event_type,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=offset,
+            )
+        except Exception as e:
+            logger.error(f"Failed to query events: {e}")
+            return []
+
+    async def count_events(
+        self,
+        session_id: UUID | None = None,
+        event_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> int:
+        """
+        Count events matching filters.
+
+        Args:
+            session_id: Filter by session ID
+            event_type: Filter by event type
+            start_time: Filter events after this time
+            end_time: Filter events before this time
+
+        Returns:
+            Number of matching events
+        """
+        if not self.storage:
+            return 0
+
+        try:
+            return await self.storage.count_events(
+                session_id=session_id,
+                event_type=event_type,
+                start_time=start_time,
+                end_time=end_time,
+            )
+        except Exception as e:
+            logger.error(f"Failed to count events: {e}")
+            return 0
 
     def get_stats(self) -> dict[str, Any]:
         """Get collector statistics."""
@@ -224,6 +310,7 @@ Focus on: what tasks were attempted, any errors/warnings, and overall progress."
             "sample_rate": self.sampler.sample_rate,
             "ai_summaries_enabled": self.enable_ai_summaries,
             "flush_callbacks": len(self.flush_callbacks),
+            "storage_enabled": self.storage is not None,
         }
 
 

@@ -114,6 +114,20 @@ class SecurityConfig(BaseModel):
     )
 
 
+class RateLimitConfig(BaseModel):
+    """Rate limiting configuration."""
+
+    enabled: bool = Field(default=True)
+    requests_per_window: int = Field(default=100, ge=1)
+    window_seconds: int = Field(default=60, ge=1)
+    # Per-tier overrides (if implementing tiered rate limits)
+    tier_limits: dict[str, int] = Field(default_factory=dict)
+    # Endpoints to exempt from rate limiting
+    exempt_paths: list[str] = Field(
+        default_factory=lambda: ["/", "/health", "/schema", "/schema/openapi.json"]
+    )
+
+
 class ICCCConfig(BaseModel):
     """Complete iCCC configuration."""
 
@@ -124,6 +138,7 @@ class ICCCConfig(BaseModel):
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     retry: RetryConfig = Field(default_factory=RetryConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
 
     # Global settings
     log_level: str = Field(default="INFO")
@@ -293,6 +308,18 @@ class ICCCConfig(BaseModel):
             updates.setdefault("observability", {})[
                 "enable_ai_summaries"
             ] = enable_ai.lower() in ("true", "1", "yes")
+
+        # Rate limit overrides
+        if rate_enabled := os.getenv("ICCC_RATE_LIMIT_ENABLED"):
+            updates.setdefault("rate_limit", {})[
+                "enabled"
+            ] = rate_enabled.lower() in ("true", "1", "yes")
+        if rate_requests := os.getenv("ICCC_RATE_LIMIT_REQUESTS_PER_WINDOW"):
+            updates.setdefault("rate_limit", {})["requests_per_window"] = int(
+                rate_requests
+            )
+        if rate_window := os.getenv("ICCC_RATE_LIMIT_WINDOW_SECONDS"):
+            updates.setdefault("rate_limit", {})["window_seconds"] = int(rate_window)
 
         # Global setting overrides
         if log_level := os.getenv("ICCC_LOG_LEVEL"):

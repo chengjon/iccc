@@ -1,0 +1,196 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                   Redis-Based Rate Limiting                      │
+│                      Architecture Diagram                        │
+└─────────────────────────────────────────────────────────────────┘
+
+                        ┌─────────────┐
+                        │   Client    │
+                        │  (Browser)  │
+                        └──────┬──────┘
+                               │
+                        HTTP Request
+                     (X-API-Key or IP)
+                               │
+                               ▼
+        ┌──────────────────────────────────────────────┐
+        │          Litestar API Application            │
+        │                                              │
+        │  ┌────────────────────────────────────────┐  │
+        │  │   Rate Limiting Middleware             │  │
+        │  │   (rate_limit_middleware)              │  │
+        │  │                                        │  │
+        │  │  1. Extract API key or client IP      │  │
+        │  │  2. Build rate limit key:             │  │
+        │  │     - "apikey:{key[:16]}" or          │  │
+        │  │     - "ip:{client_ip}"                │  │
+        │  │  3. Check rate limit                  │  │
+        │  │  4. Add X-RateLimit-* headers         │  │
+        │  │  5. Return 429 if exceeded            │  │
+        │  └──────────┬─────────────────────────────┘  │
+        │             │                                 │
+        │  ┌──────────▼─────────────────────────────┐  │
+        │  │   Authentication Middleware            │  │
+        │  │   (api_key_auth_middleware)            │  │
+        │  └──────────┬─────────────────────────────┘  │
+        │             │                                 │
+        │  ┌──────────▼─────────────────────────────┐  │
+        │  │   Route Handlers                       │  │
+        │  │   (/projects, /agents, /tasks, etc.)   │  │
+        │  └────────────────────────────────────────┘  │
+        └──────────────────────────────────────────────┘
+                               │
+                               │ Redis Operations
+                               ▼
+        ┌──────────────────────────────────────────────┐
+        │         RedisRateLimiter                     │
+        │                                              │
+        │  check_rate_limit(key, increment=True)      │
+        │  ├─ ZREMRANGEBYSCORE (remove old)           │
+        │  ├─ ZCARD (count requests)                  │
+        │  ├─ ZADD (add current timestamp)            │
+        │  └─ EXPIRE (set TTL)                        │
+        │                                              │
+        │  Returns RateLimitResult:                   │
+        │  - allowed: bool                            │
+        │  - limit: int                               │
+        │  - remaining: int                           │
+        │  - reset_timestamp: float                   │
+        └──────────────┬───────────────────────────────┘
+                       │
+                       │ Pipeline (atomic)
+                       ▼
+        ┌──────────────────────────────────────────────┐
+        │              Redis Database                  │
+        │                                              │
+        │  Key: ratelimit:apikey:abc123               │
+        │  Type: Sorted Set (ZSET)                    │
+        │  Members: [timestamp1, timestamp2, ...]     │
+        │  Scores:  [timestamp1, timestamp2, ...]     │
+        │  TTL: window_seconds (60s default)          │
+        │                                              │
+        │  ┌────────────────────────────────────────┐  │
+        │  │  Sliding Window Data Structure         │  │
+        │  │                                        │  │
+        │  │  Time ───────────────────────►         │  │
+        │  │                                        │  │
+        │  │  Window (60s)                          │  │
+        │  │  ┌────────────────────────────────┐    │  │
+        │  │  │ req1  req2  req3 ... req100    │    │  │
+        │  │  └────────────────────────────────┘    │  │
+        │  │     ▲                            ▲     │  │
+        │  │     │                            │     │  │
+        │  │   now-60s                       now    │  │
+        │  └────────────────────────────────────────┘  │
+        └──────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    Request Flow Example                          │
+└─────────────────────────────────────────────────────────────────┘
+
+1. Client Request:
+   GET /projects/
+   X-API-Key: abc123def456
+
+2. Rate Limit Middleware:
+   - Extract key: "apikey:abc123def456"
+   - Check Redis: check_rate_limit("apikey:abc123def456")
+
+3. Redis Operations (Pipelined):
+   a) ZREMRANGEBYSCORE ratelimit:apikey:abc123def456 0 (now-60s)
+      → Remove old timestamps
+   b) ZCARD ratelimit:apikey:abc123def456
+      → Count current requests (e.g., 45)
+   c) ZADD ratelimit:apikey:abc123def456 now now
+      → Add current request
+   d) EXPIRE ratelimit:apikey:abc123def456 60
+      → Set TTL
+
+4. Rate Limit Check:
+   - Current: 46 requests
+   - Limit: 100 requests
+   - Remaining: 54 requests
+   - Allowed: true ✓
+
+5. Response Headers:
+   HTTP/1.1 200 OK
+   X-RateLimit-Limit: 100
+   X-RateLimit-Remaining: 54
+   X-RateLimit-Reset: 1702857600
+
+6. If Limit Exceeded (101st request):
+   HTTP/1.1 429 Too Many Requests
+   X-RateLimit-Limit: 100
+   X-RateLimit-Remaining: 0
+   X-RateLimit-Reset: 1702857600
+   Retry-After: 42
+
+   {
+     "error": "rate_limit_exceeded",
+     "message": "Rate limit exceeded. Maximum 100 requests per 60 seconds.",
+     "details": {
+       "limit": 100,
+       "window_seconds": 60,
+       "retry_after": 42
+     }
+   }
+
+┌─────────────────────────────────────────────────────────────────┐
+│                   Configuration Flow                             │
+└─────────────────────────────────────────────────────────────────┘
+
+.env File:
+  ICCC_RATE_LIMIT_ENABLED=true
+  ICCC_RATE_LIMIT_REQUESTS_PER_WINDOW=100
+  ICCC_RATE_LIMIT_WINDOW_SECONDS=60
+       │
+       ▼
+ICCCConfig (config.py):
+  RateLimitConfig(
+    enabled=true,
+    requests_per_window=100,
+    window_seconds=60,
+    exempt_paths=["/", "/health"]
+  )
+       │
+       ▼
+RedisRateLimiter:
+  - requests_per_window: 100
+  - window_seconds: 60
+  - key_prefix: "ratelimit"
+       │
+       ▼
+Middleware Application:
+  - Checks config.rate_limit.enabled
+  - Uses config.rate_limit.exempt_paths
+  - Enforces config.rate_limit.requests_per_window
+
+┌─────────────────────────────────────────────────────────────────┐
+│                     Error Handling Flow                          │
+└─────────────────────────────────────────────────────────────────┘
+
+Redis Connection Error:
+  ┌──────────────────┐
+  │ Redis Fails      │
+  └────────┬─────────┘
+           │
+           ▼
+  ┌──────────────────────────────┐
+  │ Catch RedisError             │
+  │ Log Warning                  │
+  │ Return RateLimitResult(      │
+  │   allowed=True,              │  ← FAIL OPEN
+  │   limit=100,                 │
+  │   remaining=100              │
+  │ )                            │
+  └────────┬─────────────────────┘
+           │
+           ▼
+  ┌──────────────────┐
+  │ Allow Request    │  ← Service continues
+  └──────────────────┘
+
+Key Benefits:
+• No service disruption from Redis failures
+• Monitoring alerts on Redis errors
+• Graceful degradation
+• Audit trail in logs

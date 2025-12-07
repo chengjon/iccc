@@ -2,9 +2,10 @@
 
 from litestar import Litestar, get
 from litestar.config.cors import CORSConfig
+from litestar.middleware import DefineMiddleware
 from litestar.openapi import OpenAPIConfig
 
-from iccc.api.middleware import error_handler
+from iccc.api.middleware import api_key_auth_middleware, error_handler, rate_limit_middleware
 from iccc.api.routes import (
     agent_router,
     observability_router,
@@ -29,12 +30,13 @@ async def health_check() -> dict:
     }
 
 
-def create_app(enable_auth: bool = False) -> Litestar:
+def create_app(enable_auth: bool = False, enable_rate_limit: bool = True) -> Litestar:
     """
     Create and configure the Litestar application.
 
     Args:
         enable_auth: Whether to enable API key authentication
+        enable_rate_limit: Whether to enable rate limiting
 
     Returns:
         Configured Litestar app
@@ -57,7 +59,18 @@ def create_app(enable_auth: bool = False) -> Litestar:
         },
     )
 
-    # Create app (simplified - no custom middleware for now)
+    # Configure middleware (order matters: rate limit -> auth -> routes)
+    middleware = []
+
+    # Add rate limiting first (apply to all requests)
+    if enable_rate_limit:
+        middleware.append(DefineMiddleware(rate_limit_middleware))
+
+    # Add authentication after rate limiting
+    if enable_auth:
+        middleware.append(DefineMiddleware(api_key_auth_middleware))
+
+    # Create app
     app = Litestar(
         route_handlers=[
             health_check,
@@ -70,6 +83,7 @@ def create_app(enable_auth: bool = False) -> Litestar:
         cors_config=cors_config,
         openapi_config=openapi_config,
         exception_handlers={Exception: error_handler},
+        middleware=middleware,
         debug=True,  # Disable in production
     )
 
