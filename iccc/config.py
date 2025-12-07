@@ -150,7 +150,13 @@ class ICCCConfig(BaseModel):
         mongo_dbname = os.getenv("MONGODB_DBNAME") or os.getenv("ICCC_MONGODB_DATABASE")
 
         # Build MongoDB URI from components or use full URI
-        if mongo_uri := (os.getenv("MONGODB_URL") or os.getenv("ICCC_MONGODB_URI")):
+        # Priority: MONGODB_URL > components > ICCC_MONGODB_URI
+        mongo_url = os.getenv("MONGODB_URL")
+        if mongo_url:
+            config_dict.setdefault("mongodb", {})["uri"] = mongo_url
+            if mongo_dbname:
+                config_dict.setdefault("mongodb", {})["database"] = mongo_dbname
+        elif mongo_uri := os.getenv("ICCC_MONGODB_URI"):
             config_dict.setdefault("mongodb", {})["uri"] = mongo_uri
         elif mongo_host and mongo_dbname:
             # Build URI from components
