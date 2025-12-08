@@ -148,6 +148,13 @@ class TestMigrationRunner:
         migration = InitialSchemaMigration()
         runner.register(migration)
 
+        # Mock that migration is applied
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(
+            return_value=[{"version": "001_initial_schema"}]
+        )
+        mock_db_client.db.migrations.find = MagicMock(return_value=mock_cursor)
+
         # Mock delete_one
         mock_db_client.db.migrations.delete_one = AsyncMock()
 

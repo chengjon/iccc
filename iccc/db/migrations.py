@@ -1,9 +1,12 @@
 """Database migration system for schema evolution."""
 
 import asyncio
+import logging
 from datetime import datetime
 
 from iccc.db.repositories import MongoDBClient
+
+logger = logging.getLogger(__name__)
 
 
 class Migration:
@@ -21,6 +24,22 @@ class Migration:
     async def down(self, db_client: MongoDBClient) -> None:
         """Rollback the migration."""
         raise NotImplementedError
+
+
+class MigrationStatus:
+    """Migration status information."""
+
+    def __init__(
+        self,
+        version: str,
+        description: str,
+        applied: bool,
+        applied_at: str | None = None
+    ) -> None:
+        self.version = version
+        self.description = description
+        self.applied = applied
+        self.applied_at = applied_at
 
 
 class MigrationRunner:
@@ -44,8 +63,69 @@ class MigrationRunner:
         docs = await cursor.to_list(length=None)
         return {doc["version"] for doc in docs}
 
-    async def run_pending_migrations(self) -> list[str]:
-        """Run all pending migrations."""
+    async def get_migration_status(self) -> list[MigrationStatus]:
+        """
+        Get status of all migrations (applied and pending).
+
+        Returns:
+            List of MigrationStatus objects sorted by version
+        """
+        if not self.db_client.db:
+            raise RuntimeError("Database not connected")
+
+        applied = await self.get_applied_migrations()
+
+        # Get applied_at timestamps
+        migrations_col = self.db_client.db.migrations
+        cursor = migrations_col.find({})
+        applied_docs = await cursor.to_list(length=None)
+        applied_at_map = {
+            doc["version"]: doc.get("applied_at")
+            for doc in applied_docs
+        }
+
+        # Create status for all migrations
+        statuses = []
+        for migration in self.migrations:
+            is_applied = migration.version in applied
+            applied_at = applied_at_map.get(migration.version) if is_applied else None
+
+            statuses.append(
+                MigrationStatus(
+                    version=migration.version,
+                    description=migration.description,
+                    applied=is_applied,
+                    applied_at=applied_at
+                )
+            )
+
+        # Sort by version
+        statuses.sort(key=lambda s: s.version)
+        return statuses
+
+    async def list_migrations(self) -> list[tuple[str, str, bool]]:
+        """
+        List all migrations with their status.
+
+        Returns:
+            List of tuples: (version, description, is_applied)
+        """
+        statuses = await self.get_migration_status()
+        return [
+            (s.version, s.description, s.applied)
+            for s in statuses
+        ]
+
+    async def run_pending_migrations(self, dry_run: bool = False) -> list[str]:
+        """
+        Run all pending migrations.
+
+        Args:
+            dry_run: If True, only show which migrations would be applied
+
+        Returns:
+            List of applied migration versions
+        """
         if not self.db_client.db:
             raise RuntimeError("Database not connected")
 
@@ -55,9 +135,19 @@ class MigrationRunner:
         # Sort by version
         pending.sort(key=lambda m: m.version)
 
+        if dry_run:
+            logger.info(
+                f"[DRY RUN] Would apply {len(pending)} migration(s): "
+                f"{[m.version for m in pending]}"
+            )
+            return []
+
         applied_versions = []
-        for migration in pending:
-            print(f"Running migration {migration.version}: {migration.description}")
+        for i, migration in enumerate(pending, 1):
+            logger.info(
+                f"[{i}/{len(pending)}] Running migration {migration.version}: "
+                f"{migration.description}"
+            )
             try:
                 await migration.up(self.db_client)
 
@@ -70,32 +160,63 @@ class MigrationRunner:
                     }
                 )
                 applied_versions.append(migration.version)
-                print(f"✓ Migration {migration.version} applied successfully")
+                logger.info(f"✓ Migration {migration.version} applied successfully")
             except Exception as e:
-                print(f"✗ Migration {migration.version} failed: {e}")
-                raise
+                logger.error(
+                    f"✗ Migration {migration.version} failed: {e}",
+                    exc_info=True
+                )
+                raise RuntimeError(
+                    f"Migration {migration.version} failed: {e}. "
+                    f"Applied {len(applied_versions)} migration(s) before failure."
+                ) from e
 
         return applied_versions
 
-    async def rollback_migration(self, version: str) -> None:
-        """Rollback a specific migration."""
+    async def rollback_migration(self, version: str | None = None) -> str:
+        """
+        Rollback a specific migration or the last applied migration.
+
+        Args:
+            version: Version to rollback (defaults to last applied)
+
+        Returns:
+            Version of the rolled back migration
+
+        Raises:
+            ValueError: If migration not found or not applied
+            RuntimeError: If rollback fails
+        """
         if not self.db_client.db:
             raise RuntimeError("Database not connected")
 
+        # If no version specified, get the last applied migration
+        if version is None:
+            applied = await self.get_applied_migrations()
+            if not applied:
+                raise ValueError("No migrations to rollback")
+            version = max(applied)
+
+        # Check if migration is applied
+        applied = await self.get_applied_migrations()
+        if version not in applied:
+            raise ValueError(f"Migration {version} is not applied")
+
         migration = next((m for m in self.migrations if m.version == version), None)
         if not migration:
-            raise ValueError(f"Migration {version} not found")
+            raise ValueError(f"Migration {version} not found in registered migrations")
 
-        print(f"Rolling back migration {version}: {migration.description}")
+        logger.info(f"Rolling back migration {version}: {migration.description}")
         try:
             await migration.down(self.db_client)
 
             # Remove migration record
             await self.db_client.db.migrations.delete_one({"version": version})
-            print(f"✓ Migration {version} rolled back successfully")
+            logger.info(f"✓ Migration {version} rolled back successfully")
+            return version
         except Exception as e:
-            print(f"✗ Rollback of {version} failed: {e}")
-            raise
+            logger.error(f"✗ Rollback of {version} failed: {e}", exc_info=True)
+            raise RuntimeError(f"Rollback of {version} failed: {e}") from e
 
 
 # Built-in Migrations

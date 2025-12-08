@@ -1,7 +1,10 @@
 """Command-line interface for iCCC."""
 
 import asyncio
+import logging
+import os
 import sys
+import time
 from pathlib import Path
 
 import click
@@ -15,6 +18,12 @@ from iccc.db.repositories import (
     TaskRepository,
 )
 from iccc.models.entities import Agent, AgentStatus, Project, Task, TaskStatus, TaskType
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 @click.group()
@@ -332,6 +341,311 @@ def start_orchestrator(project_name: str) -> None:
             await client.disconnect()
 
     asyncio.run(_start())
+
+
+@cli.group()
+def migrate() -> None:
+    """Database migration management."""
+    pass
+
+
+@migrate.command("up")
+@click.option(
+    "--mongodb-url",
+    envvar="MONGODB_URL",
+    help="MongoDB connection URL (default: from env or localhost)"
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show which migrations would be applied without applying them"
+)
+def migrate_up(mongodb_url: str | None, dry_run: bool) -> None:
+    """Run pending migrations."""
+    from iccc.db.migrations import MigrationRunner, get_all_migrations
+
+    async def _run() -> None:
+        client = MongoDBClient(mongodb_url)
+        try:
+            await client.connect()
+
+            runner = MigrationRunner(client)
+
+            # Register all migrations
+            for migration in get_all_migrations():
+                runner.register(migration)
+
+            # Get status
+            statuses = await runner.get_migration_status()
+            pending = [s for s in statuses if not s.applied]
+
+            if not pending:
+                click.echo(click.style("✓ All migrations up to date", fg="green"))
+                return
+
+            if dry_run:
+                click.echo(click.style("[DRY RUN] Would apply migrations:", fg="yellow"))
+                for status in pending:
+                    click.echo(f"  • {status.version}: {status.description}")
+                return
+
+            click.echo(click.style("Running pending migrations...", fg="cyan"))
+            start_time = time.time()
+
+            applied = await runner.run_pending_migrations(dry_run=False)
+
+            elapsed = time.time() - start_time
+
+            if applied:
+                click.echo(
+                    click.style(
+                        f"\n✓ Applied {len(applied)} migration(s) successfully in {elapsed:.2f}s",
+                        fg="green"
+                    )
+                )
+                for version in applied:
+                    click.echo(f"  ✓ {version}")
+            else:
+                click.echo(click.style("✓ All migrations up to date", fg="green"))
+
+        except Exception as e:
+            click.echo(click.style(f"✗ Migration failed: {e}", fg="red"), err=True)
+            sys.exit(1)
+        finally:
+            await client.disconnect()
+
+    asyncio.run(_run())
+
+
+@migrate.command("down")
+@click.option(
+    "--mongodb-url",
+    envvar="MONGODB_URL",
+    help="MongoDB connection URL (default: from env or localhost)"
+)
+@click.option(
+    "--version",
+    help="Specific migration version to rollback (default: last applied)"
+)
+def migrate_down(mongodb_url: str | None, version: str | None) -> None:
+    """Rollback the last migration or a specific migration."""
+    from iccc.db.migrations import MigrationRunner, get_all_migrations
+
+    async def _rollback() -> None:
+        client = MongoDBClient(mongodb_url)
+        try:
+            await client.connect()
+
+            runner = MigrationRunner(client)
+
+            # Register all migrations
+            for migration in get_all_migrations():
+                runner.register(migration)
+
+            # Get applied migrations
+            applied = await runner.get_applied_migrations()
+
+            if not applied:
+                click.echo(click.style("No migrations to rollback", fg="yellow"))
+                return
+
+            # Determine version to rollback
+            rollback_version = version or max(applied)
+
+            # Confirm
+            if not version:
+                click.echo(
+                    f"Will rollback last applied migration: "
+                    f"{click.style(rollback_version, fg='yellow')}"
+                )
+            else:
+                click.echo(f"Will rollback migration: {click.style(version, fg='yellow')}")
+
+            if not click.confirm("Continue?"):
+                click.echo("Rollback cancelled")
+                return
+
+            click.echo(click.style("Rolling back migration...", fg="cyan"))
+            start_time = time.time()
+
+            rolled_back = await runner.rollback_migration(rollback_version)
+
+            elapsed = time.time() - start_time
+
+            click.echo(
+                click.style(
+                    f"\n✓ Rolled back migration {rolled_back} in {elapsed:.2f}s",
+                    fg="green"
+                )
+            )
+
+        except ValueError as e:
+            click.echo(click.style(f"✗ {e}", fg="red"), err=True)
+            sys.exit(1)
+        except Exception as e:
+            click.echo(click.style(f"✗ Rollback failed: {e}", fg="red"), err=True)
+            sys.exit(1)
+        finally:
+            await client.disconnect()
+
+    asyncio.run(_rollback())
+
+
+@migrate.command("status")
+@click.option(
+    "--mongodb-url",
+    envvar="MONGODB_URL",
+    help="MongoDB connection URL (default: from env or localhost)"
+)
+def migrate_status(mongodb_url: str | None) -> None:
+    """Show migration status."""
+    from iccc.db.migrations import MigrationRunner, get_all_migrations
+
+    async def _status() -> None:
+        client = MongoDBClient(mongodb_url)
+        try:
+            await client.connect()
+
+            runner = MigrationRunner(client)
+
+            # Register all migrations
+            for migration in get_all_migrations():
+                runner.register(migration)
+
+            # Get status
+            statuses = await runner.get_migration_status()
+
+            if not statuses:
+                click.echo("No migrations registered")
+                return
+
+            applied = [s for s in statuses if s.applied]
+            pending = [s for s in statuses if not s.applied]
+
+            click.echo(click.style("Database Migrations Status", fg="cyan", bold=True))
+            click.echo("=" * 50)
+
+            if applied:
+                click.echo(click.style(f"\nApplied ({len(applied)}):", fg="green"))
+                for status in applied:
+                    applied_date = ""
+                    if status.applied_at:
+                        # Format the ISO datetime to be more readable
+                        applied_date = f" (applied: {status.applied_at[:10]})"
+                    click.echo(f"  ✓ {status.version}: {status.description}{applied_date}")
+
+            if pending:
+                click.echo(click.style(f"\nPending ({len(pending)}):", fg="yellow"))
+                for status in pending:
+                    click.echo(f"  • {status.version}: {status.description}")
+            else:
+                click.echo(click.style("\n✓ All migrations applied", fg="green"))
+
+        except Exception as e:
+            click.echo(click.style(f"✗ Failed to get status: {e}", fg="red"), err=True)
+            sys.exit(1)
+        finally:
+            await client.disconnect()
+
+    asyncio.run(_status())
+
+
+@migrate.command("list")
+@click.option(
+    "--mongodb-url",
+    envvar="MONGODB_URL",
+    help="MongoDB connection URL (default: from env or localhost)"
+)
+def migrate_list(mongodb_url: str | None) -> None:
+    """List all migrations."""
+    from iccc.db.migrations import MigrationRunner, get_all_migrations
+
+    async def _list() -> None:
+        client = MongoDBClient(mongodb_url)
+        try:
+            await client.connect()
+
+            runner = MigrationRunner(client)
+
+            # Register all migrations
+            for migration in get_all_migrations():
+                runner.register(migration)
+
+            # Get migrations
+            migrations = await runner.list_migrations()
+
+            if not migrations:
+                click.echo("No migrations registered")
+                return
+
+            click.echo(click.style("All Migrations", fg="cyan", bold=True))
+            click.echo("=" * 50)
+
+            for version, description, is_applied in migrations:
+                status_icon = "✓" if is_applied else "•"
+                status_color = "green" if is_applied else "white"
+                status_text = "applied" if is_applied else "pending"
+
+                click.echo(
+                    f"  {click.style(status_icon, fg=status_color)} "
+                    f"{click.style(version, bold=True)}: {description} "
+                    f"({click.style(status_text, fg=status_color)})"
+                )
+
+        except Exception as e:
+            click.echo(click.style(f"✗ Failed to list migrations: {e}", fg="red"), err=True)
+            sys.exit(1)
+        finally:
+            await client.disconnect()
+
+    asyncio.run(_list())
+
+
+@migrate.command("create")
+@click.argument("name")
+@click.option(
+    "--description",
+    help="Migration description"
+)
+def migrate_create(name: str, description: str | None) -> None:
+    """Create a new migration file."""
+    from iccc.db.migration_template import MigrationTemplate
+
+    try:
+        # Determine migrations directory
+        # Look for migrations in iccc/db/migration_files/ directory
+        project_root = Path(__file__).parent.parent
+        migrations_dir = project_root / "iccc" / "db" / "migration_files"
+
+        # Create migration file
+        filepath = MigrationTemplate.create_migration_file(
+            migrations_dir,
+            name,
+            description or f"Migration: {name}"
+        )
+
+        click.echo(click.style(f"✓ Created migration: {filepath}", fg="green"))
+        click.echo(
+            click.style(
+                "\nNext steps:",
+                fg="cyan",
+                bold=True
+            )
+        )
+        click.echo("  1. Edit the migration file and implement up() and down() methods")
+        click.echo("  2. Add the migration to get_all_migrations() in iccc/db/migrations.py")
+        click.echo("  3. Test the migration with: iccc migrate up --dry-run")
+        click.echo("  4. Apply the migration with: iccc migrate up")
+
+    except ValueError as e:
+        click.echo(click.style(f"✗ Invalid migration name: {e}", fg="red"), err=True)
+        sys.exit(1)
+    except FileExistsError as e:
+        click.echo(click.style(f"✗ {e}", fg="red"), err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(click.style(f"✗ Failed to create migration: {e}", fg="red"), err=True)
+        sys.exit(1)
 
 
 def main() -> None:
