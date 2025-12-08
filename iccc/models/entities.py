@@ -295,6 +295,14 @@ class PromptTemplate(BaseModel):
         return v.isoformat()
 
 
+class QualityCheckStatus(str, Enum):
+    """Quality check status."""
+
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+
+
 class GoalStatus(str, Enum):
     """Goal lifecycle status for planning system."""
 
@@ -303,6 +311,49 @@ class GoalStatus(str, Enum):
     ACHIEVED = "achieved"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class GateResultData(BaseModel):
+    """Individual gate result data."""
+
+    gate_name: str
+    status: str  # "passed", "failed", "skipped"
+    message: str
+    details: str | None = None
+
+    model_config = ConfigDict()
+
+
+class QualityCheck(BaseModel):
+    """Quality check entity representing a quality gate execution."""
+
+    id: UUID = Field(default_factory=uuid4)
+    project_id: UUID
+    task_id: UUID | None = None  # Optional link to task
+    status: QualityCheckStatus = QualityCheckStatus.RUNNING
+    gate_results: list[GateResultData] = Field(default_factory=list)
+    passed: bool = False  # Overall status
+    created_at: datetime = Field(default_factory=datetime.now)
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict()
+
+    @field_serializer("id", "project_id")
+    def serialize_uuid(self, v: UUID) -> str:
+        """Serialize UUID to string."""
+        return str(v)
+
+    @field_serializer("task_id")
+    def serialize_task_id(self, v: UUID | None) -> str | None:
+        """Serialize task UUID to string."""
+        return str(v) if v else None
+
+    @field_serializer("created_at", "completed_at")
+    def serialize_datetime(self, v: datetime | None) -> str | None:
+        """Serialize datetime to ISO format."""
+        return v.isoformat() if v else None
 
 
 class Goal(BaseModel):

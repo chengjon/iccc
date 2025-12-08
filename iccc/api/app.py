@@ -1,18 +1,31 @@
 """Main Litestar API application."""
 
+import logging
+import os
+
 from litestar import Litestar, get
 from litestar.config.cors import CORSConfig
 from litestar.middleware import DefineMiddleware
 from litestar.openapi import OpenAPIConfig
 
-from iccc.api.middleware import api_key_auth_middleware, error_handler, rate_limit_middleware
+from iccc.api.middleware import (
+    api_key_auth_middleware,
+    error_handler,
+    logging_middleware,
+    rate_limit_middleware,
+)
+from iccc.api.performance_middleware import create_performance_middleware
+from iccc.api.request_id_middleware import create_request_id_middleware
 from iccc.api.routes import (
     agent_router,
     observability_router,
     project_router,
     prompt_router,
+    quality_router,
     task_router,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @get("/")
@@ -30,17 +43,43 @@ async def health_check() -> dict:
     }
 
 
-def create_app(enable_auth: bool = False, enable_rate_limit: bool = True) -> Litestar:
+def create_app(
+    enable_auth: bool | None = None,
+    enable_rate_limit: bool | None = None,
+    enable_performance: bool | None = None,
+    enable_logging: bool | None = None,
+) -> Litestar:
     """
     Create and configure the Litestar application.
 
     Args:
-        enable_auth: Whether to enable API key authentication
-        enable_rate_limit: Whether to enable rate limiting
+        enable_auth: Whether to enable API key authentication (defaults to ICCC_ENABLE_AUTH env var)
+        enable_rate_limit: Whether to enable rate limiting (defaults to ICCC_ENABLE_RATE_LIMIT env var)
+        enable_performance: Whether to enable performance monitoring (defaults to ICCC_ENABLE_PERFORMANCE env var)
+        enable_logging: Whether to enable request logging (defaults to ICCC_ENABLE_LOGGING env var)
 
     Returns:
         Configured Litestar app
     """
+    # Read configuration from environment if not explicitly provided
+    if enable_auth is None:
+        enable_auth = os.getenv("ICCC_ENABLE_AUTH", "false").lower() in ("true", "1", "yes")
+
+    if enable_rate_limit is None:
+        enable_rate_limit = os.getenv("ICCC_ENABLE_RATE_LIMIT", "true").lower() in ("true", "1", "yes")
+
+    if enable_performance is None:
+        enable_performance = os.getenv("ICCC_ENABLE_PERFORMANCE", "true").lower() in ("true", "1", "yes")
+
+    if enable_logging is None:
+        enable_logging = os.getenv("ICCC_ENABLE_LOGGING", "true").lower() in ("true", "1", "yes")
+
+    logger.info(
+        f"Creating Litestar app with middleware: "
+        f"auth={enable_auth}, rate_limit={enable_rate_limit}, "
+        f"performance={enable_performance}, logging={enable_logging}"
+    )
+
     # Configure CORS
     cors_config = CORSConfig(
         allow_origins=["*"],  # Configure for production
@@ -59,16 +98,30 @@ def create_app(enable_auth: bool = False, enable_rate_limit: bool = True) -> Lit
         },
     )
 
-    # Configure middleware (order matters: rate limit -> auth -> routes)
+    # Configure middleware in correct order (first in list = outermost layer)
+    # Order: Request ID -> Logging -> Performance -> Rate Limiting -> Authentication
     middleware = []
 
-    # Add rate limiting first (apply to all requests)
+    # 1. Request ID middleware (first - for tracing all other middleware)
+    middleware.append(DefineMiddleware(create_request_id_middleware))
+
+    # 2. Logging middleware (second - logs all requests with request ID)
+    if enable_logging:
+        middleware.append(DefineMiddleware(logging_middleware))
+
+    # 3. Performance middleware (third - timing includes rate limiting and auth)
+    if enable_performance:
+        middleware.append(DefineMiddleware(create_performance_middleware))
+
+    # 4. Rate limiting middleware (fourth - before auth to prevent brute force)
     if enable_rate_limit:
         middleware.append(DefineMiddleware(rate_limit_middleware))
 
-    # Add authentication after rate limiting
+    # 5. Authentication middleware (fifth - protect routes)
     if enable_auth:
         middleware.append(DefineMiddleware(api_key_auth_middleware))
+
+    logger.info(f"Middleware stack configured with {len(middleware)} middleware layers")
 
     # Create app
     app = Litestar(
@@ -79,6 +132,7 @@ def create_app(enable_auth: bool = False, enable_rate_limit: bool = True) -> Lit
             task_router,
             observability_router,
             prompt_router,
+            quality_router,
         ],
         cors_config=cors_config,
         openapi_config=openapi_config,
@@ -90,5 +144,5 @@ def create_app(enable_auth: bool = False, enable_rate_limit: bool = True) -> Lit
     return app
 
 
-# Create default app instance
-app = create_app(enable_auth=False)
+# Create default app instance with environment-based configuration
+app = create_app()

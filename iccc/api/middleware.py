@@ -140,34 +140,55 @@ def logging_middleware(app: Any) -> Any:
     Returns:
         Middleware wrapper
     """
-    async def middleware(request: Request, next_handler: Any) -> Response:
-        """Log all incoming requests and their responses."""
+    async def middleware(scope: Any, receive: Any, send: Any) -> None:
+        """ASGI middleware for request logging."""
+        # Only process HTTP requests
+        if scope["type"] != "http":
+            await app(scope, receive, send)
+            return
+
         start_time = datetime.now()
+        request = Request(scope=scope, receive=receive)
+        request_id = scope.get("state", {}).get("request_id")
 
         # Log request
+        extra = {
+            "method": scope.get("method"),
+            "path": scope.get("path"),
+            "client": request.client.host if request.client else None,
+        }
+        if request_id:
+            extra["request_id"] = request_id
+
         logger.info(
-            f"Request: {request.method} {request.url.path}",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "client": request.client.host if request.client else None,
-            },
+            f"Request: {scope.get('method')} {scope.get('path')}",
+            extra=extra,
         )
 
-        # Process request
-        response = await next_handler(request)
+        # Track response status
+        status_code = [200]  # Default
 
-        # Log response
-        duration = (datetime.now() - start_time).total_seconds() * 1000  # ms
-        logger.info(
-            f"Response: {response.status_code} ({duration:.2f}ms)",
-            extra={
-                "status": response.status_code,
-                "duration_ms": duration,
-            },
-        )
+        async def send_wrapper(message: Any) -> None:
+            """Wrap send to log response."""
+            if message["type"] == "http.response.start":
+                status_code[0] = message.get("status", 200)
+            elif message["type"] == "http.response.body":
+                # Log response after headers sent
+                duration = (datetime.now() - start_time).total_seconds() * 1000  # ms
+                extra_resp = {
+                    "status": status_code[0],
+                    "duration_ms": duration,
+                }
+                if request_id:
+                    extra_resp["request_id"] = request_id
 
-        return response
+                logger.info(
+                    f"Response: {status_code[0]} ({duration:.2f}ms)",
+                    extra=extra_resp,
+                )
+            await send(message)
+
+        await app(scope, receive, send_wrapper)
 
     return middleware
 
@@ -255,115 +276,134 @@ def api_key_auth_middleware(app: Any) -> Any:
     return middleware
 
 
-# Rate limiting middleware
-async def rate_limit_middleware(request: Request, next_handler: Any) -> Response:
+# Rate limiting middleware factory
+def rate_limit_middleware(app: Any) -> Any:
     """
-    Apply rate limiting to API requests using Redis sliding window algorithm.
-
-    Rate limits are applied per API key (if authenticated) or per client IP.
-    Returns 429 Too Many Requests when limit is exceeded.
+    Create rate limiting middleware.
 
     Args:
-        request: Incoming request
-        next_handler: Next middleware/handler in chain
+        app: The ASGI application
 
     Returns:
-        Response from handler with rate limit headers
+        Middleware wrapper
     """
-    config = get_config()
-    rate_config = config.rate_limit
+    async def middleware(scope: Any, receive: Any, send: Any) -> None:
+        """ASGI middleware for rate limiting."""
+        # Only process HTTP requests
+        if scope["type"] != "http":
+            await app(scope, receive, send)
+            return
 
-    # Skip if rate limiting is disabled
-    if not rate_config.enabled:
-        return await next_handler(request)
+        config = get_config()
+        rate_config = config.rate_limit
 
-    # Skip exempt paths
-    if request.url.path in rate_config.exempt_paths:
-        return await next_handler(request)
+        # Build request from scope
+        request = Request(scope=scope, receive=receive)
 
-    # Get rate limiter instance
-    limiter = get_rate_limiter()
-    if not limiter:
-        logger.warning("Rate limiter not initialized - allowing request")
-        return await next_handler(request)
+        # Skip if rate limiting is disabled
+        if not rate_config.enabled:
+            await app(scope, receive, send)
+            return
 
-    # Determine rate limit key (API key preferred, fallback to IP)
-    limit_key = None
+        # Skip exempt paths
+        if request.url.path in rate_config.exempt_paths:
+            await app(scope, receive, send)
+            return
 
-    # Try to get API key from headers
-    api_key = request.headers.get("X-API-Key")
-    if not api_key:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            api_key = auth_header[7:]
+        # Get rate limiter instance
+        limiter = get_rate_limiter()
+        if not limiter:
+            logger.warning("Rate limiter not initialized - allowing request")
+            await app(scope, receive, send)
+            return
 
-    if api_key:
-        # Use API key as limit key
-        limit_key = f"apikey:{api_key[:16]}"  # Use prefix to avoid key exposure
-    else:
-        # Fallback to client IP
-        client_ip = request.client.host if request.client else "unknown"
-        limit_key = f"ip:{client_ip}"
+        # Determine rate limit key (API key preferred, fallback to IP)
+        limit_key = None
 
-    # Check rate limit
-    try:
-        result = await limiter.check_rate_limit(limit_key, increment=True)
+        # Try to get API key from headers
+        api_key = request.headers.get("X-API-Key")
+        if not api_key:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                api_key = auth_header[7:]
 
-        # Add rate limit headers to response
-        if result.allowed:
-            # Request is within limits - proceed
-            response = await next_handler(request)
+        if api_key:
+            # Use API key as limit key
+            limit_key = f"apikey:{api_key[:16]}"  # Use prefix to avoid key exposure
         else:
-            # Rate limit exceeded - return 429
-            logger.warning(
-                f"Rate limit exceeded for key '{limit_key}' on path {request.url.path}",
+            # Fallback to client IP
+            client_ip = request.client.host if request.client else "unknown"
+            limit_key = f"ip:{client_ip}"
+
+        # Check rate limit
+        try:
+            result = await limiter.check_rate_limit(limit_key, increment=True)
+
+            if result.allowed:
+                # Request is within limits - proceed with headers
+                async def send_wrapper(message: Any) -> None:
+                    """Wrap send to add rate limit headers."""
+                    if message["type"] == "http.response.start":
+                        headers = list(message.get("headers", []))
+                        headers.append((b"x-ratelimit-limit", str(result.limit).encode()))
+                        headers.append((b"x-ratelimit-remaining", str(result.remaining).encode()))
+                        headers.append((b"x-ratelimit-reset", str(int(result.reset_timestamp)).encode()))
+                        message["headers"] = headers
+                    await send(message)
+
+                await app(scope, receive, send_wrapper)
+            else:
+                # Rate limit exceeded - return 429
+                logger.warning(
+                    f"Rate limit exceeded for key '{limit_key}' on path {request.url.path}",
+                    extra={
+                        "limit_key": limit_key,
+                        "path": request.url.path,
+                        "method": request.method,
+                    },
+                )
+
+                error_response = ErrorResponse(
+                    error="rate_limit_exceeded",
+                    message=f"Rate limit exceeded. Maximum {result.limit} requests per {rate_config.window_seconds} seconds.",
+                    details={
+                        "limit": result.limit,
+                        "window_seconds": rate_config.window_seconds,
+                        "retry_after": result.reset_after_seconds,
+                    },
+                    timestamp=datetime.now(),
+                )
+
+                # Send 429 response
+                response_body = error_response.model_dump_json().encode()
+                await send({
+                    "type": "http.response.start",
+                    "status": 429,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(response_body)).encode()),
+                        (b"retry-after", str(result.reset_after_seconds).encode()),
+                        (b"x-ratelimit-limit", str(result.limit).encode()),
+                        (b"x-ratelimit-remaining", str(result.remaining).encode()),
+                        (b"x-ratelimit-reset", str(int(result.reset_timestamp)).encode()),
+                    ],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": response_body,
+                })
+
+        except Exception as e:
+            # On any error, fail open (allow request) but log the error
+            logger.error(
+                f"Rate limiting error for key '{limit_key}': {e}",
+                exc_info=True,
                 extra={
                     "limit_key": limit_key,
                     "path": request.url.path,
-                    "method": request.method,
                 },
             )
+            logger.warning(f"Rate limiting bypassed due to error - allowing request")
+            await app(scope, receive, send)
 
-            error_response = ErrorResponse(
-                error="rate_limit_exceeded",
-                message=f"Rate limit exceeded. Maximum {result.limit} requests per {rate_config.window_seconds} seconds.",
-                details={
-                    "limit": result.limit,
-                    "window_seconds": rate_config.window_seconds,
-                    "retry_after": result.reset_after_seconds,
-                },
-                timestamp=datetime.now(),
-            )
-
-            response = Response(
-                content=error_response.model_dump(mode="json"),
-                status_code=429,  # Too Many Requests
-                media_type="application/json",
-                headers={
-                    "Retry-After": str(result.reset_after_seconds),
-                },
-            )
-
-        # Add rate limit headers to all responses
-        response.headers.update(
-            {
-                "X-RateLimit-Limit": str(result.limit),
-                "X-RateLimit-Remaining": str(result.remaining),
-                "X-RateLimit-Reset": str(int(result.reset_timestamp)),
-            }
-        )
-
-        return response
-
-    except Exception as e:
-        # On any error, fail open (allow request) but log the error
-        logger.error(
-            f"Rate limiting error for key '{limit_key}': {e}",
-            exc_info=True,
-            extra={
-                "limit_key": limit_key,
-                "path": request.url.path,
-            },
-        )
-        logger.warning(f"Rate limiting bypassed due to error - allowing request")
-        return await next_handler(request)
+    return middleware

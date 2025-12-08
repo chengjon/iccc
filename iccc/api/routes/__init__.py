@@ -5,6 +5,7 @@ from iccc.api.routes.agents import agent_router
 from iccc.api.routes.tasks import task_router
 from iccc.api.routes.observability import observability_router
 from iccc.api.routes.prompts import prompt_router
+from iccc.api.routes.quality import quality_router
 
 __all__ = [
     "project_router",
@@ -12,4 +13,5 @@ __all__ = [
     "task_router",
     "observability_router",
     "prompt_router",
+    "quality_router",
 ]

@@ -198,7 +198,7 @@ class TestRateLimiting:
         """Test that exceeding rate limit returns 429 status."""
         from iccc.api.rate_limiter import RateLimitResult
         from iccc.api.middleware import set_rate_limiter
-        from unittest.mock import patch
+        from unittest.mock import patch, AsyncMock
         import time
 
         # Mock rate limiter to return limit exceeded
@@ -311,7 +311,7 @@ class TestRateLimiting:
     def test_rate_limit_error_fails_open(self, mock_rate_limiter):
         """Test that rate limiter errors fail open (allow request)."""
         from iccc.api.middleware import set_rate_limiter
-        from unittest.mock import patch
+        from unittest.mock import patch, AsyncMock
 
         # Mock rate limiter to raise exception
         mock_rate_limiter.check_rate_limit = AsyncMock(

@@ -13,6 +13,7 @@ from iccc.models.entities import (
     HookEvent,
     Project,
     PromptTemplate,
+    QualityCheck,
     Session,
     Task,
 )
@@ -535,4 +536,79 @@ class GoalRepository:
     async def delete(self, goal_id: UUID) -> bool:
         """Delete a goal."""
         result = await self.collection.delete_one({"id": str(goal_id)})
+        return bool(result.deleted_count > 0)
+
+
+class QualityCheckRepository:
+    """Repository for QualityCheck entities."""
+
+    def __init__(self, db_client: MongoDBClient) -> None:
+        self.db_client = db_client
+
+    @property
+    def collection(self) -> Any:
+        """Get quality_checks collection."""
+        if self.db_client.db is None:
+            raise RuntimeError("Database not connected")
+        return self.db_client.db.quality_checks
+
+    def _convert_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Convert MongoDB document to QualityCheck-compatible format."""
+        from uuid import UUID as UUIDType
+
+        if isinstance(doc["id"], str):
+            doc["id"] = UUIDType(doc["id"])
+        if isinstance(doc["project_id"], str):
+            doc["project_id"] = UUIDType(doc["project_id"])
+        if doc.get("task_id") and isinstance(doc["task_id"], str):
+            doc["task_id"] = UUIDType(doc["task_id"])
+        return doc
+
+    async def create(self, quality_check: QualityCheck) -> QualityCheck:
+        """Create a new quality check."""
+        await self.collection.insert_one(quality_check.model_dump(mode="json"))
+        return quality_check
+
+    async def get(self, check_id: UUID) -> QualityCheck | None:
+        """Get quality check by ID."""
+        doc = await self.collection.find_one({"id": str(check_id)})
+        if not doc:
+            return None
+        return QualityCheck(**self._convert_doc(doc))
+
+    async def list_by_project(
+        self,
+        project_id: UUID,
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[QualityCheck]:
+        """List quality checks for a project with optional filtering."""
+        query: dict[str, Any] = {"project_id": str(project_id)}
+        if status:
+            query["status"] = status
+
+        cursor = self.collection.find(query).sort("created_at", DESCENDING).skip(offset).limit(limit)
+        docs = await cursor.to_list(length=None)
+        return [QualityCheck(**self._convert_doc(doc)) for doc in docs]
+
+    async def count_by_project(
+        self, project_id: UUID, status: str | None = None
+    ) -> int:
+        """Count quality checks for a project with optional filtering."""
+        query: dict[str, Any] = {"project_id": str(project_id)}
+        if status:
+            query["status"] = status
+        return await self.collection.count_documents(query)
+
+    async def update(self, quality_check: QualityCheck) -> QualityCheck:
+        """Update an existing quality check."""
+        await self.collection.update_one(
+            {"id": str(quality_check.id)}, {"$set": quality_check.model_dump(mode="json")}
+        )
+        return quality_check
+
+    async def delete(self, check_id: UUID) -> bool:
+        """Delete a quality check."""
+        result = await self.collection.delete_one({"id": str(check_id)})
         return bool(result.deleted_count > 0)

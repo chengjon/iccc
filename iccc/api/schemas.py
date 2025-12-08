@@ -178,3 +178,57 @@ class PaginatedResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+# Quality Check Schemas
+class GateResultSchema(BaseModel):
+    """Schema for individual gate result."""
+
+    gate_name: str
+    status: str  # "passed", "failed", "skipped"
+    message: str
+    details: str | None = None
+
+
+class QualityCheckCreate(BaseModel):
+    """Schema for creating/running a quality check."""
+
+    project_id: UUID = Field(..., description="Project ID to run quality checks on")
+    gate_names: list[str] | None = Field(
+        None, description="Specific gates to run (null = all gates)"
+    )
+    task_id: UUID | None = Field(None, description="Optional task ID to associate with check")
+
+
+class QualityCheckResponse(BaseModel):
+    """Schema for quality check response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: UUID
+    task_id: UUID | None
+    status: str  # "running", "passed", "failed"
+    gate_results: list[GateResultSchema]
+    passed: bool
+    created_at: datetime
+    completed_at: datetime | None
+    duration_seconds: float | None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def model_validate(cls, obj):
+        """Custom validation to handle QualityCheckStatus enum."""
+        if hasattr(obj, "status") and not isinstance(obj.status, str):
+            obj_dict = obj.model_dump(mode="python") if hasattr(obj, "model_dump") else obj.__dict__
+            obj_dict["status"] = obj.status.value if hasattr(obj.status, "value") else str(obj.status)
+            return super().model_validate(obj_dict)
+        return super().model_validate(obj)
+
+
+class QualityGateInfo(BaseModel):
+    """Schema for quality gate metadata."""
+
+    name: str
+    required: bool
+    description: str
