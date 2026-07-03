@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""
+Review CLI - 多级审核命令行工具
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# 添加项目路径到Python路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from quality.review_system import MultiLevelReviewSystem, ReviewLevel
+import asyncio
+
+
+def main():
+    """主函数"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Review - 多级审核系统',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 运行完整的三级审核
+  review --task TASK-001 --deliverables src/main.py tests/
+
+  # 只运行自动化检查
+  review --task TASK-001 --deliverables src/ --level automated
+
+  # 查看审核报告
+  review --report --task TASK-001
+
+  # 列出所有待审核任务
+  review --list
+        """
+    )
+
+    parser.add_argument(
+        '--task',
+        help='任务ID'
+    )
+
+    parser.add_argument(
+        '--deliverables',
+        nargs='+',
+        help='交付物文件路径'
+    )
+
+    parser.add_argument(
+        '--level',
+        choices=['automated', 'manager', 'brain'],
+        help='指定审核级别'
+    )
+
+    parser.add_argument(
+        '--report',
+        action='store_true',
+        help='查看审核报告'
+    )
+
+    parser.add_argument(
+        '--list',
+        action='store_true',
+        help='列出所有审核记录'
+    )
+
+    parser.add_argument(
+        '--project-root',
+        type=Path,
+        default=Path.cwd(),
+        help='项目根目录路径'
+    )
+
+    args = parser.parse_args()
+
+    # 创建审核系统
+    review_system = MultiLevelReviewSystem(args.project_root)
+
+    # 处理命令
+    if args.report and args.task:
+        # 显示审核报告
+        report_path = (args.project_root / ".iccc" / ".plans" / "current" /
+                      f"REVIEW_REPORT_{args.task}.md")
+        if report_path.exists():
+            print(report_path.read_text(encoding='utf-8'))
+        else:
+            print(f"未找到任务 {args.task} 的审核报告")
+
+    elif args.list:
+        # 列出所有审核记录
+        review_dir = args.project_root / ".iccc" / ".state" / "quality-reviews"
+        if review_dir.exists():
+            review_files = list(review_dir.glob("review_*.json"))
+            if review_files:
+                print("所有审核记录:")
+                for file_path in sorted(review_files):
+                    task_id = file_path.stem.split('_')[1]
+                    timestamp = file_path.stat().st_mtime
+                    import datetime
+                    date = datetime.datetime.fromtimestamp(timestamp)
+                    print(f"  - {task_id}: {date.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                print("暂无审核记录")
+        else:
+            print("审核目录不存在")
+
+    elif args.task and args.deliverables:
+        # 运行审核
+        async def run_review():
+            # 准备交付物路径
+            deliverables = [Path(d) for d in args.deliverables]
+
+            # 确定审核级别
+            review_level = None
+            if args.level:
+                review_level = ReviewLevel(args.level)
+
+            # 运行审核
+            results = await review_system.run_review(
+                task_id=args.task,
+                deliverables=deliverables,
+                review_level=review_level
+            )
+
+            # 显示结果摘要
+            print("\n" + "="*60)
+            print("审核结果摘要")
+            print("="*60)
+
+            all_passed = True
+            for level, result in results.items():
+                status_icon = "✅" if result.status.value == "passed" else "❌"
+                print(f"\n{status_icon} {level.upper()}:")
+                print(f"  状态: {result.status.value}")
+                if result.score:
+                    print(f"  评分: {result.score:.2f}")
+                if result.reviewer:
+                    print(f"  审核人: {result.reviewer}")
+                if result.issues:
+                    print(f"  问题数: {len(result.issues)}")
+
+                if result.status.value != "passed":
+                    all_passed = False
+
+            print("\n" + "="*60)
+            if all_passed:
+                print("🎉 所有审核通过！")
+            else:
+                print("⚠️  存在未通过的审核项，请根据报告进行改进")
+            print("="*60)
+
+        asyncio.run(run_review())
+
+    else:
+        parser.print_help()
+
+
+if __name__ == '__main__':
+    main()

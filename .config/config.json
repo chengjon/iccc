@@ -1,0 +1,130 @@
+{
+  "cli_instance": {
+    "cli_id": "default-cli",
+    "cli_type": "iccc",
+    "role": "brain",
+    "host": "localhost",
+    "port": 8000,
+    "max_agents": 50
+  },
+  "agent_limits": {
+    "brain": {
+      "max_instances": 1,
+      "default_model": "opus",
+      "timeout": 300
+    },
+    "managers": {
+      "total_max": 10,
+      "per_type_max": 3,
+      "default_model": "sonnet",
+      "timeout": 180
+    },
+    "workers": {
+      "total_max": 100,
+      "per_type_max": 20,
+      "default_model": "flexible",
+      "timeout": 120
+    }
+  },
+  "task_distribution": {
+    "strategy": "capability_based",
+    "load_balancing": {
+      "enabled": true,
+      "algorithm": "round_robin"
+    },
+    "affinity": {
+      "enabled": true,
+      "preferred_type_weight": 0.7
+    },
+    "retry_policy": {
+      "max_attempts": 3,
+      "backoff_factor": 2,
+      "max_delay": 60
+    }
+  },
+  "quality_gates": {
+    "automated_checks": {
+      "enabled": true,
+      "tools": ["mypy", "eslint", "pytest", "bandit"],
+      "fail_fast": true
+    },
+    "code_review": {
+      "required": true,
+      "auto_approve_threshold": 0.9
+    },
+    "coverage_threshold": 90,
+    "performance_threshold": {
+      "api_response": 500,
+      "page_load": 3000,
+      "memory_usage": 0.8
+    }
+  },
+  "hooks": {
+    "pre_tool": {
+      "safety_check": {
+        "enabled": true,
+        "rules": [
+          "no_direct_db_write",
+          "no_hardcoded_secrets",
+          "validate_inputs"
+        ]
+      },
+      "file_lock": {
+        "enabled": true,
+        "timeout": 30,
+        "conflict_resolution": "queue"
+      }
+    },
+    "post_tool": {
+      "auto_format": {
+        "enabled": true,
+        "tools": ["black", "isort", "prettier"],
+        "run_on": ["write", "edit"]
+      },
+      "git_commit": {
+        "enabled": true,
+        "auto_push": false,
+        "commit_template": "feat: {description} [Agent: {agent_id}]"
+      }
+    },
+    "agent_stop": {
+      "task_update": {
+        "enabled": true,
+        "update_plans": true
+      },
+      "quality_review": {
+        "enabled": true,
+        "auto_assign": true
+      }
+    }
+  },
+  "communication": {
+    "redis": {
+      "url": "redis://localhost:6379",
+      "pool_size": 10,
+      "encoding": "utf-8"
+    },
+    "mongodb": {
+      "url": "mongodb://localhost:27017",
+      "database": "iccc",
+      "pool_size": 5
+    },
+    "event_bus": {
+      "channel": "iccc:events",
+      "max_subscribers": 100
+    }
+  },
+  "models": {
+    "default_mapping": {
+      "strategic": "opus",
+      "architectural": "opus",
+      "security_critical": "opus",
+      "complex": "sonnet",
+      "routine": "sonnet",
+      "simple": "haiku",
+      "testing": "haiku",
+      "documentation": "haiku"
+    },
+    "fallback": "sonnet"
+  }
+}

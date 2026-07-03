@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from litestar import Controller, get, post, put
+from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.exceptions import NotFoundException
 
@@ -10,9 +11,9 @@ from iccc.api.schemas import AgentCreate, AgentResponse, AgentUpdate
 from iccc.db.repositories import AgentRepository
 
 
-async def provide_agent_repo() -> AgentRepository:
+async def provide_agent_repo(state: State) -> AgentRepository:
     """Dependency injection for AgentRepository."""
-    return AgentRepository()
+    return AgentRepository(db_client=state.db_client)
 
 
 class AgentController(Controller):

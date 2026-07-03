@@ -34,11 +34,21 @@ class AgentStatus(str, Enum):
     STOPPED = "stopped"
 
 
+class RoleType(str, Enum):
+    """System roles for agents."""
+    
+    WORKER = "worker"
+    MANAGER = "manager"
+    BRAIN = "brain"
+
+
 class TaskStatus(str, Enum):
     """Task execution status."""
 
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    REVIEW_NEEDED = "review_needed"
+    CHANGES_REQUESTED = "changes_requested"
     COMPLETED = "completed"
     FAILED = "failed"
     BLOCKED = "blocked"
@@ -125,6 +135,7 @@ class Agent(BaseModel):
     project_id: UUID
     name: str
     agent_type: str  # e.g., "frontend-developer", "backend-developer"
+    role: RoleType = RoleType.WORKER
     model: ModelTier
     specialization: str | None = None  # e.g., "frontend", "backend", "testing"
     status: AgentStatus = AgentStatus.IDLE
@@ -179,6 +190,7 @@ class Task(BaseModel):
     assigned_agent_id: str | None = None
     dependencies: list[UUID] = Field(default_factory=list)  # Task IDs that must complete first
     result: str | None = None
+    review_feedback: str | None = None
     error: str | None = None
     files_modified: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.now)

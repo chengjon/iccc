@@ -1,0 +1,124 @@
+{
+  "name": "refactoring",
+  "description": "重构工作流",
+  "version": "1.0",
+  "phases": [
+    {
+      "phase": "preparation",
+      "name": "准备阶段",
+      "steps": [
+        {
+          "step": 1,
+          "name": "确保测试覆盖",
+          "agent_type": "worker",
+          "role": "testing",
+          "required": true,
+          "output": "test_coverage_report",
+          "estimated_time": 30,
+          "dependencies": []
+        },
+        {
+          "step": 2,
+          "name": "识别重构范围",
+          "agent_type": "manager",
+          "role": "development",
+          "required": true,
+          "output": "refactoring_scope",
+          "estimated_time": 45,
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "phase": "execution",
+      "name": "执行重构",
+      "steps": [
+        {
+          "step": 1,
+          "name": "增量式重构",
+          "agent_type": "worker",
+          "required": true,
+          "output": "refactored_code",
+          "estimated_time": 120,
+          "dependencies": ["test_coverage_report", "refactoring_scope"]
+        },
+        {
+          "step": 2,
+          "name": "持续测试",
+          "agent_type": "worker",
+          "role": "testing",
+          "required": true,
+          "output": "continuous_test_results",
+          "estimated_time": 60,
+          "dependencies": ["refactored_code"]
+        }
+      ]
+    },
+    {
+      "phase": "validation",
+      "name": "验证阶段",
+      "steps": [
+        {
+          "step": 1,
+          "name": "性能对比",
+          "agent_type": "worker",
+          "role": "backend",
+          "required": false,
+          "output": "performance_comparison",
+          "estimated_time": 30,
+          "dependencies": ["refactored_code"]
+        },
+        {
+          "step": 2,
+          "name": "最终验证",
+          "agent_type": "manager",
+          "role": "quality",
+          "required": true,
+          "output": "validation_report",
+          "estimated_time": 30,
+          "dependencies": ["continuous_test_results", "performance_comparison"]
+        }
+      ]
+    },
+    {
+      "phase": "review",
+      "name": "审核阶段",
+      "steps": [
+        {
+          "step": 1,
+          "name": "架构审核",
+          "agent_type": "manager",
+          "role": "architecture",
+          "required": true,
+          "output": "architecture_review",
+          "estimated_time": 45,
+          "dependencies": ["validation_report"]
+        },
+        {
+          "step": 2,
+          "name": "最终审核",
+          "agent_type": "brain",
+          "required": true,
+          "output": "final_approval",
+          "estimated_time": 20,
+          "dependencies": ["architecture_review"]
+        }
+      ]
+    }
+  ],
+  "quality_gates": {
+    "automated": {
+      "test_coverage": 90,
+      "no_performance_degradation": true,
+      "code_quality_maintained": true
+    },
+    "manual": {
+      "architecture_review": true,
+      "team_approval": false
+    }
+  },
+  "rollback": {
+    "enabled": true,
+    "strategies": ["git_revert", "branch_abandonment"]
+  }
+}

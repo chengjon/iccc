@@ -1,0 +1,183 @@
+{
+  "strategies": {
+    "capability_based": {
+      "description": "基于能力匹配的任务分发",
+      "weight": 0.6,
+      "rules": [
+        {
+          "task_type": "frontend_development",
+          "required_capabilities": ["react", "typescript"],
+          "preferred_workers": ["frontend"],
+          "fallback_workers": ["backend", "fullstack"]
+        },
+        {
+          "task_type": "backend_api",
+          "required_capabilities": ["python", "api"],
+          "preferred_workers": ["backend"],
+          "fallback_workers": ["fullstack", "frontend"]
+        },
+        {
+          "task_type": "security_audit",
+          "required_capabilities": ["security", "penetration"],
+          "preferred_workers": ["security"],
+          "fallback_workers": ["backend", "devops"]
+        },
+        {
+          "task_type": "documentation",
+          "required_capabilities": ["writing", "structured_docs"],
+          "preferred_workers": ["documentation"],
+          "fallback_workers": ["frontend", "backend"]
+        },
+        {
+          "task_type": "testing",
+          "required_capabilities": ["testing", "automation"],
+          "preferred_workers": ["testing"],
+          "fallback_workers": ["backend", "frontend"]
+        }
+      ]
+    },
+    "load_balanced": {
+      "description": "负载均衡的任务分发",
+      "weight": 0.3,
+      "algorithms": {
+        "round_robin": {
+          "description": "轮询分发",
+          "config": {
+            "skip_busy": true,
+            "track_load": true
+          }
+        },
+        "weighted_round_robin": {
+          "description": "加权轮询",
+          "config": {
+            "weights": {
+              "frontend": 3,
+              "backend": 3,
+              "testing": 2,
+              "documentation": 1
+            }
+          }
+        },
+        "least_connections": {
+          "description": "最少连接数分发",
+          "config": {
+            "update_interval": 30
+          }
+        }
+      }
+    },
+    "priority_first": {
+      "description": "基于优先级的分发",
+      "weight": 0.1,
+      "levels": {
+        "critical": {
+          "priority": 10,
+          "max_queue_jump": 5,
+          "preempt_lower": true
+        },
+        "high": {
+          "priority": 7,
+          "max_queue_jump": 3,
+          "preempt_lower": true
+        },
+        "normal": {
+          "priority": 5,
+          "max_queue_jump": 1,
+          "preempt_lower": false
+        },
+        "low": {
+          "priority": 3,
+          "max_queue_jump": 0,
+          "preempt_lower": false
+        }
+      }
+    }
+  },
+  "affinity": {
+    "cli_type_affinity": {
+      "enabled": true,
+      "affinities": {
+        "iccc": {
+          "frontend": 0.8,
+          "backend": 1.0,
+          "testing": 0.7,
+          "documentation": 0.5
+        },
+        "iflow": {
+          "frontend": 1.0,
+          "backend": 0.6,
+          "ui": 1.0,
+          "design": 0.9
+        },
+        "gemini": {
+          "testing": 1.0,
+          "automation": 0.9,
+          "quality": 0.8,
+          "analysis": 0.7
+        }
+      }
+    },
+    "task_affinity": {
+      "enabled": true,
+      "rules": [
+        {
+          "pattern": ".*test.*",
+          "affinity": "testing",
+          "strength": "strong"
+        },
+        {
+          "pattern": ".*security.*",
+          "affinity": "security",
+          "strength": "very_strong"
+        },
+        {
+          "pattern": ".*doc.*",
+          "affinity": "documentation",
+          "strength": "medium"
+        }
+      ]
+    },
+    "worker_affinity": {
+      "enabled": true,
+      "timeout": 300,
+      "decay_factor": 0.9
+    }
+  },
+  "resilience": {
+    "retry_policy": {
+      "max_attempts": 3,
+      "backoff_strategy": "exponential",
+      "backoff_factor": 2,
+      "max_delay": 60,
+      "jitter": true
+    },
+    "circuit_breaker": {
+      "enabled": true,
+      "failure_threshold": 5,
+      "recovery_timeout": 300,
+      "half_open_max_calls": 3
+    },
+    "fallback_strategies": {
+      "worker_unavailable": "queue",
+      "cli_offline": "wait_and_retry",
+      "model_overload": "downgrade_model",
+      "quality_gate_failed": "escalate_to_manager"
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "task_completion_rate",
+      "agent_utilization",
+      "queue_depth",
+      "response_time",
+      "error_rate",
+      "throughput"
+    ],
+    "alerts": {
+      "queue_depth_threshold": 100,
+      "error_rate_threshold": 0.05,
+      "response_time_threshold": 30000,
+      "agent_failure_rate_threshold": 0.1
+    }
+  }
+}

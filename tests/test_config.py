@@ -252,7 +252,7 @@ redis:
             "ICCC_DATA_DIR": "/env/data",
         }
 
-        with patch.dict(os.environ, env_vars, clear=False):
+        with patch.dict(os.environ, env_vars, clear=True):
             config = ICCCConfig.from_env()
             assert config.mongodb.uri == "mongodb://env:27017"
             assert config.mongodb.database == "env_db"

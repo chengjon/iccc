@@ -7,21 +7,26 @@ from uuid import UUID
 
 import redis.asyncio as redis
 
-from iccc.models.entities import Task
+from iccc.models.entities import Task, RoleType
 from iccc.config import get_config
+from iccc.config.constants import QueueConfig, SystemRoles
 
 
 class RedisTaskQueue:
     """Redis-based task queue with priority support."""
 
     def __init__(self, redis_url: Optional[str] = None) -> None:
-        self.redis_url: str = redis_url if redis_url is not None else self._build_redis_url_from_config()
+        self.redis_url: str = (
+            redis_url
+            or os.getenv("REDIS_URL")
+            or self._build_redis_url_from_config()
+        )
         self.client: Optional[redis.Redis[str]] = None
 
         # Queue keys
-        self.pending_queue = "iccc:tasks:pending"
-        self.in_progress_queue = "iccc:tasks:in_progress"
-        self.completed_queue = "iccc:tasks:completed"
+        self.pending_queue_prefix = QueueConfig.PENDING_QUEUE_PREFIX
+        self.in_progress_queue = f"{QueueConfig.PENDING_QUEUE_PREFIX}:in_progress"
+        self.completed_queue = f"{QueueConfig.PENDING_QUEUE_PREFIX}:completed"
         self.task_data_prefix = "iccc:task:"
 
     def _build_redis_url_from_config(self) -> str:
@@ -30,6 +35,11 @@ class RedisTaskQueue:
         if config.password:
             return f"redis://:{config.password}@{config.host}:{config.port}/{config.db}"
         return f"redis://{config.host}:{config.port}/{config.db}"
+
+    def _get_queue_name(self, role: str | RoleType) -> str:
+        """Get the pending queue name for a specific role."""
+        role_value = role.value if isinstance(role, RoleType) else role
+        return f"{self.pending_queue_prefix}:{role_value}"
 
     async def connect(self) -> None:
         """Establish Redis connection."""
@@ -40,13 +50,14 @@ class RedisTaskQueue:
         if self.client:
             await self.client.close()
 
-    async def enqueue(self, task: Task, priority: int = 0) -> None:
+    async def enqueue(self, task: Task, priority: int = 0, role: str | RoleType = RoleType.WORKER) -> None:
         """
-        Add a task to the pending queue.
+        Add a task to the pending queue for a specific role.
 
         Args:
             task: Task to enqueue
             priority: Priority score (higher = more urgent), default 0
+            role: Role queue to add to (worker, manager, brain)
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
@@ -57,15 +68,17 @@ class RedisTaskQueue:
         task_key = f"{self.task_data_prefix}{task_id}"
         await self.client.set(task_key, task.model_dump_json())
 
-        # Add to pending queue with priority
-        await self.client.zadd(self.pending_queue, {task_id: priority})
+        # Add to role-specific pending queue with priority
+        queue_name = self._get_queue_name(role)
+        await self.client.zadd(queue_name, {task_id: priority})
 
-    async def dequeue(self, agent_id: str) -> Task | None:
+    async def dequeue(self, agent_id: str, role: str | RoleType = RoleType.WORKER) -> Task | None:
         """
-        Dequeue the highest priority task.
+        Dequeue the highest priority task from the role's queue.
 
         Args:
             agent_id: ID of the agent claiming the task
+            role: Role of the agent (worker, manager, brain)
 
         Returns:
             Task object or None if queue is empty
@@ -73,8 +86,10 @@ class RedisTaskQueue:
         if not self.client:
             raise RuntimeError("Redis client not connected")
 
+        queue_name = self._get_queue_name(role)
+        
         # Atomic pop from pending queue (highest priority first)
-        result = await self.client.zpopmax(self.pending_queue)
+        result = await self.client.zpopmax(queue_name)
 
         if not result:
             return None
@@ -151,9 +166,15 @@ class RedisTaskQueue:
         """Get the length of all queues."""
         if not self.client:
             raise RuntimeError("Redis client not connected")
+            
+        worker_len = await self.client.zcard(self._get_queue_name(RoleType.WORKER))
+        manager_len = await self.client.zcard(self._get_queue_name(RoleType.MANAGER))
+        brain_len = await self.client.zcard(self._get_queue_name(RoleType.BRAIN))
 
         return {
-            "pending": await self.client.zcard(self.pending_queue),
+            "pending_worker": worker_len,
+            "pending_manager": manager_len,
+            "pending_brain": brain_len,
             "in_progress": await self.client.hlen(self.in_progress_queue),
             "completed": await self.client.scard(self.completed_queue),
             "failed": await self.client.scard("iccc:tasks:failed"),
@@ -172,13 +193,14 @@ class RedisTaskQueue:
 
         return task_ids
 
-    async def requeue_task(self, task_id: UUID, priority: int = 0) -> None:
+    async def requeue_task(self, task_id: UUID, priority: int = 0, role: str | RoleType = RoleType.WORKER) -> None:
         """
         Return a task to the pending queue.
 
         Args:
             task_id: Task ID to requeue
             priority: New priority (default 0)
+            role: Role queue to add to
         """
         if not self.client:
             raise RuntimeError("Redis client not connected")
@@ -188,8 +210,9 @@ class RedisTaskQueue:
         # Remove from in_progress
         await self.client.hdel(self.in_progress_queue, task_id_str)
 
-        # Add back to pending
-        await self.client.zadd(self.pending_queue, {task_id_str: -priority})
+        # Add back to role-specific pending queue
+        queue_name = self._get_queue_name(role)
+        await self.client.zadd(queue_name, {task_id_str: priority})
 
     async def cleanup_stale_tasks(self, timeout_seconds: int = 3600) -> int:
         """

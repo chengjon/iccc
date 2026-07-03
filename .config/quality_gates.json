@@ -1,0 +1,143 @@
+{
+  "quality_gates": {
+    "automated": {
+      "enabled": true,
+      "fail_fast": true,
+      "checks": {
+        "linting": {
+          "enabled": true,
+          "tools": ["flake8", "black", "isort"],
+          "threshold": {
+            "max_issues": 0
+          }
+        },
+        "type_check": {
+          "enabled": true,
+          "tools": ["mypy"],
+          "threshold": {
+            "strict_mode": true,
+            "max_errors": 0
+          }
+        },
+        "security_scan": {
+          "enabled": true,
+          "tools": ["bandit", "safety"],
+          "threshold": {
+            "max_high_issues": 0,
+            "max_medium_issues": 2
+          }
+        },
+        "test_coverage": {
+          "enabled": true,
+          "tools": ["pytest-cov"],
+          "threshold": {
+            "min_coverage": 90,
+            "min_branch_coverage": 85
+          }
+        },
+        "performance_check": {
+          "enabled": false,
+          "tools": ["locust", "pytest-benchmark"],
+          "threshold": {
+            "max_response_time": 200,
+            "min_throughput": 1000
+          }
+        },
+        "dependency_check": {
+          "enabled": true,
+          "tools": ["pip-audit"],
+          "threshold": {
+            "max_vulnerabilities": 0
+          }
+        }
+      }
+    },
+    "manual": {
+      "code_review": {
+        "enabled": true,
+        "required_reviewers": 2,
+        "approval_threshold": 8.0,
+        "checklist": [
+          "代码逻辑是否清晰",
+          "是否遵循设计模式",
+          "错误处理是否完善",
+          "是否考虑边界条件",
+          "代码复用性",
+          "可测试性"
+        ]
+      },
+      "architecture_review": {
+        "enabled": true,
+        "required_for": ["new_feature", "major_refactor"],
+        "reviewer": "architecture_manager",
+        "checklist": [
+          "架构设计是否合理",
+          "扩展性考虑",
+          "性能影响评估",
+          "安全性考虑",
+          "技术选型合理性"
+        ]
+      },
+      "security_review": {
+        "enabled": true,
+        "required_for": ["auth_change", "api_change", "database_change"],
+        "reviewer": "security_manager",
+        "checklist": [
+          "权限控制",
+          "数据验证",
+          "SQL注入防护",
+          "XSS防护",
+          "敏感信息保护"
+        ]
+      },
+      "test_review": {
+        "enabled": true,
+        "reviewer": "quality_manager",
+        "checklist": [
+          "测试覆盖率",
+          "测试用例完整性",
+          "边界测试",
+          "性能测试",
+          "集成测试"
+        ]
+      }
+    },
+    "final_approval": {
+      "brain": {
+        "enabled": true,
+        "criteria": [
+          "all_automated_checks_pass",
+          "all_manual_reviews_pass",
+          "requirement_compliance >= 90%",
+          "overall_quality_score >= 8.5"
+        ],
+        "auto_approve": false
+      }
+    }
+  },
+  "exemptions": {
+    "prototype": {
+      "description": "原型代码，部分质量检查可以豁免",
+      "exemptions": [
+        "performance_check",
+        "architecture_review"
+      ]
+    },
+    "hotfix": {
+      "description": "紧急修复，简化审核流程",
+      "exemptions": [
+        "performance_check",
+        "architecture_review",
+        "one_reviewer_only"
+      ]
+    },
+    "docs_only": {
+      "description": "仅文档更新",
+      "exemptions": [
+        "automated_checks",
+        "code_review",
+        "test_review"
+      ]
+    }
+  }
+}

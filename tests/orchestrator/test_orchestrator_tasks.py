@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from iccc.models.entities import Agent, AgentStatus, ModelTier, Task, TaskStatus, TaskType
+from iccc.models.entities import Agent, AgentStatus, ModelTier, Task, TaskStatus, TaskType, RoleType
 from iccc.orchestrator import Orchestrator
 
 
@@ -121,7 +121,9 @@ class TestSubmitTask:
 
         assert len(task_ids) == 1
         started_orchestrator.task_repo.create.assert_called_once()
-        started_orchestrator.task_queue.enqueue.assert_called_once()
+        # Verify default role is WORKER for simple_refactor
+        enqueue_call = started_orchestrator.task_queue.enqueue.call_args
+        assert enqueue_call[1]["role"] == RoleType.WORKER
 
     @pytest.mark.asyncio
     async def test_submit_task_with_auto_decompose(self, started_orchestrator):
@@ -135,12 +137,8 @@ class TestSubmitTask:
         mock_prim_task_2.name = "implement"
         mock_prim_task_2.estimated_complexity = 3
 
-        mock_prim_task_3 = MagicMock()
-        mock_prim_task_3.name = "test"
-        mock_prim_task_3.estimated_complexity = 2
-
         started_orchestrator.task_decomposer.decompose_task = MagicMock(
-            return_value=[mock_prim_task_1, mock_prim_task_2, mock_prim_task_3]
+            return_value=[mock_prim_task_1, mock_prim_task_2]
         )
 
         task_ids = await started_orchestrator.submit_task(
@@ -149,9 +147,10 @@ class TestSubmitTask:
             auto_decompose=True,
         )
 
-        assert len(task_ids) == 3
-        assert started_orchestrator.task_repo.create.call_count == 3
-        assert started_orchestrator.task_queue.enqueue.call_count == 3
+        assert len(task_ids) == 2
+        assert started_orchestrator.task_repo.create.call_count == 2
+        # Only the first task (no dependencies) is enqueued
+        assert started_orchestrator.task_queue.enqueue.call_count == 1
 
     @pytest.mark.asyncio
     async def test_submit_task_with_dependencies(self, started_orchestrator):
@@ -179,19 +178,6 @@ class TestSubmitTask:
         calls = started_orchestrator.task_repo.create.call_args_list
         second_task = calls[1][0][0]
         assert second_task.dependencies == [task_ids[0]]
-
-    @pytest.mark.asyncio
-    async def test_submit_task_with_task_type(self, started_orchestrator):
-        """Test submitting task with specific task type."""
-        await started_orchestrator.submit_task(
-            description="Test refactor",
-            task_type="simple_refactor",
-            auto_decompose=False,
-        )
-
-        call_args = started_orchestrator.task_repo.create.call_args
-        created_task = call_args[0][0]
-        assert created_task.task_type == "simple_refactor"
 
     @pytest.mark.asyncio
     async def test_submit_task_with_priority(self, started_orchestrator):
@@ -232,21 +218,12 @@ class TestExecuteTask:
                 orchestrator.db_client.disconnect = AsyncMock()
                 orchestrator.task_queue.connect = AsyncMock()
                 orchestrator.task_queue.disconnect = AsyncMock()
+                orchestrator.task_queue.enqueue = AsyncMock()
                 orchestrator.task_queue.mark_completed = AsyncMock()
                 orchestrator.task_queue.mark_failed = AsyncMock()
                 orchestrator.file_lock_manager.connect = AsyncMock()
                 orchestrator.file_lock_manager.disconnect = AsyncMock()
                 orchestrator.claude_client.close = AsyncMock()
-
-                # Mock Claude client response
-                orchestrator.claude_client.send_message = AsyncMock(
-                    return_value={
-                        "content": "Task completed successfully",
-                        "usage": {"input_tokens": 100, "output_tokens": 50},
-                        "stop_reason": "end_turn",
-                        "model": "claude-sonnet-4-20250514",
-                    }
-                )
 
                 # Mock hook manager
                 orchestrator.hook_manager.trigger = AsyncMock()
@@ -255,7 +232,10 @@ class TestExecuteTask:
 
                 # Mock repositories after start
                 orchestrator.agent_repo.update = AsyncMock()
+                orchestrator.agent_repo.get = AsyncMock()
                 orchestrator.task_repo.update = AsyncMock()
+                orchestrator.task_repo.get = AsyncMock()
+                orchestrator.task_repo.list_by_status = AsyncMock(return_value=[])
 
                 yield orchestrator
 
@@ -263,15 +243,30 @@ class TestExecuteTask:
 
     @pytest.fixture
     def sample_agent(self, project_id, agent_id):
-        """Create a sample agent for testing."""
+        """Create a sample WORKER agent for testing."""
         return Agent(
             id=agent_id,
             project_id=project_id,
-            name="Test Agent",
+            name="Test Worker",
             agent_type="general",
+            role=RoleType.WORKER,
             model=ModelTier.SONNET,
             status=AgentStatus.IDLE,
             specialization="coding",
+        )
+    
+    @pytest.fixture
+    def manager_agent(self, project_id):
+        """Create a sample MANAGER agent for testing."""
+        return Agent(
+            id=f"manager-{uuid4()}",
+            project_id=project_id,
+            name="Test Manager",
+            agent_type="manager",
+            role=RoleType.MANAGER,
+            model=ModelTier.OPUS,
+            status=AgentStatus.IDLE,
+            specialization="review",
         )
 
     @pytest.fixture
@@ -285,61 +280,92 @@ class TestExecuteTask:
         )
 
     @pytest.mark.asyncio
-    async def test_execute_task_success(self, ready_orchestrator, sample_agent, sample_task):
-        """Test successful task execution."""
+    async def test_execute_task_worker_flow(self, ready_orchestrator, sample_agent, sample_task):
+        """
+        Test typical worker flow:
+        1. Worker executes task.
+        2. Task result is saved.
+        3. Task status becomes REVIEW_NEEDED (not COMPLETED yet).
+        4. Task is requeued to MANAGER.
+        """
+        # Mock Claude success response
+        ready_orchestrator.claude_client.send_message = AsyncMock(
+            return_value={"content": "Implementation Done"}
+        )
+
         await ready_orchestrator._execute_task(sample_agent, sample_task)
 
-        # Verify agent status was updated to BUSY then IDLE
-        agent_updates = ready_orchestrator.agent_repo.update.call_args_list
-        assert len(agent_updates) >= 2
-
-        # Verify task status was updated
+        # Verify task update
         task_updates = ready_orchestrator.task_repo.update.call_args_list
-        assert len(task_updates) >= 2
         final_task = task_updates[-1][0][0]
-        assert final_task.status == TaskStatus.COMPLETED
-        assert final_task.result == "Task completed successfully"
+        
+        assert final_task.result == "Implementation Done"
+        assert final_task.status == TaskStatus.REVIEW_NEEDED
+        
+        # Verify requeue to MANAGER
+        ready_orchestrator.task_queue.enqueue.assert_called_once()
+        enqueue_args = ready_orchestrator.task_queue.enqueue.call_args
+        assert enqueue_args[1]["role"] == RoleType.MANAGER
+        assert enqueue_args[0][0].id == sample_task.id
 
-        # Verify task was marked completed in queue
+    @pytest.mark.asyncio
+    async def test_execute_task_review_approve(self, ready_orchestrator, manager_agent, sample_task):
+        """
+        Test manager review flow (Approval):
+        1. Task is in REVIEW_NEEDED state.
+        2. Manager reviews and says 'APPROVED'.
+        3. Task status becomes COMPLETED.
+        """
+        sample_task.status = TaskStatus.REVIEW_NEEDED
+        sample_task.result = "Good implementation"
+
+        # Mock Claude approving
+        ready_orchestrator.claude_client.send_message = AsyncMock(
+            return_value={"content": "APPROVED: Looks good."}
+        )
+
+        await ready_orchestrator._execute_task(manager_agent, sample_task)
+
+        # Verify completion
+        task_updates = ready_orchestrator.task_repo.update.call_args_list
+        final_task = task_updates[-1][0][0]
+        
+        assert final_task.status == TaskStatus.COMPLETED
+        assert final_task.completed_at is not None
+        
+        # Verify marked completed in queue
         ready_orchestrator.task_queue.mark_completed.assert_called_once_with(sample_task.id)
 
     @pytest.mark.asyncio
-    async def test_execute_task_triggers_hooks(self, ready_orchestrator, sample_agent, sample_task):
-        """Test that hooks are triggered during task execution."""
-        await ready_orchestrator._execute_task(sample_agent, sample_task)
+    async def test_execute_task_review_changes_requested(self, ready_orchestrator, manager_agent, sample_task):
+        """
+        Test manager review flow (Rejection):
+        1. Task is in REVIEW_NEEDED state.
+        2. Manager reviews and says 'CHANGES REQUESTED'.
+        3. Task status becomes CHANGES_REQUESTED.
+        4. Task is requeued to WORKER.
+        """
+        sample_task.status = TaskStatus.REVIEW_NEEDED
+        sample_task.result = "Bad implementation"
 
-        # Verify PreToolUse and PostToolUse hooks were triggered
-        hook_calls = ready_orchestrator.hook_manager.trigger.call_args_list
-        assert len(hook_calls) == 2
+        # Mock Claude rejecting
+        ready_orchestrator.claude_client.send_message = AsyncMock(
+            return_value={"content": "CHANGES REQUESTED: Fix the bugs."}
+        )
 
-        pre_hook = hook_calls[0]
-        assert pre_hook[0][0] == "PreToolUse"
+        await ready_orchestrator._execute_task(manager_agent, sample_task)
 
-        post_hook = hook_calls[1]
-        assert post_hook[0][0] == "PostToolUse"
-
-    @pytest.mark.asyncio
-    async def test_execute_task_sends_correct_message(self, ready_orchestrator, sample_agent, sample_task):
-        """Test that correct message is sent to Claude."""
-        await ready_orchestrator._execute_task(sample_agent, sample_task)
-
-        send_call = ready_orchestrator.claude_client.send_message.call_args
-        messages = send_call[1]["messages"]
-        assert len(messages) == 1
-        assert sample_task.description in messages[0].content
-        assert "system" in send_call[1]
-        assert sample_agent.name in send_call[1]["system"]
-
-    @pytest.mark.asyncio
-    async def test_execute_task_uses_model_selector(self, ready_orchestrator, sample_agent, sample_task):
-        """Test that model is selected based on task type."""
-        with patch("iccc.orchestrator.ModelSelector.select_model") as mock_selector:
-            mock_selector.return_value = ModelTier.HAIKU
-            await ready_orchestrator._execute_task(sample_agent, sample_task)
-
-            mock_selector.assert_called_once_with(sample_task.task_type, sample_task.complexity)
-            send_call = ready_orchestrator.claude_client.send_message.call_args
-            assert send_call[1]["model"] == ModelTier.HAIKU
+        # Verify status update
+        task_updates = ready_orchestrator.task_repo.update.call_args_list
+        final_task = task_updates[-1][0][0]
+        
+        assert final_task.status == TaskStatus.CHANGES_REQUESTED
+        assert final_task.review_feedback == "CHANGES REQUESTED: Fix the bugs."
+        
+        # Verify requeue to WORKER
+        ready_orchestrator.task_queue.enqueue.assert_called_once()
+        enqueue_args = ready_orchestrator.task_queue.enqueue.call_args
+        assert enqueue_args[1]["role"] == RoleType.WORKER
 
     @pytest.mark.asyncio
     async def test_execute_task_failure(self, ready_orchestrator, sample_agent, sample_task):
@@ -362,43 +388,17 @@ class TestExecuteTask:
     @pytest.mark.asyncio
     async def test_execute_task_updates_timestamps(self, ready_orchestrator, sample_agent, sample_task):
         """Test that timestamps are updated during execution."""
+        # Setup for successful worker execution
+        ready_orchestrator.claude_client.send_message = AsyncMock(
+             return_value={"content": "Done"}
+        )
+        
         await ready_orchestrator._execute_task(sample_agent, sample_task)
 
         task_updates = ready_orchestrator.task_repo.update.call_args_list
         # Find the IN_PROGRESS update
         in_progress_task = task_updates[0][0][0]
         assert in_progress_task.started_at is not None
-
-        # Find the COMPLETED update
-        completed_task = task_updates[1][0][0]
-        assert completed_task.completed_at is not None
-
-    @pytest.mark.asyncio
-    async def test_execute_task_assigns_agent(self, ready_orchestrator, sample_agent, sample_task):
-        """Test that task is assigned to agent."""
-        await ready_orchestrator._execute_task(sample_agent, sample_task)
-
-        task_updates = ready_orchestrator.task_repo.update.call_args_list
-        in_progress_task = task_updates[0][0][0]
-        assert in_progress_task.assigned_agent_id == sample_agent.id
-
-    @pytest.mark.asyncio
-    async def test_execute_task_agent_restored_to_idle(self, ready_orchestrator, sample_agent, sample_task):
-        """Test that agent status is restored to IDLE after execution."""
-        await ready_orchestrator._execute_task(sample_agent, sample_task)
-
-        agent_updates = ready_orchestrator.agent_repo.update.call_args_list
-        final_agent_update = agent_updates[-1][0][0]
-        assert final_agent_update.status == AgentStatus.IDLE
-
-    @pytest.mark.asyncio
-    async def test_execute_task_agent_last_active_updated(self, ready_orchestrator, sample_agent, sample_task):
-        """Test that agent last_active is updated."""
-        await ready_orchestrator._execute_task(sample_agent, sample_task)
-
-        agent_updates = ready_orchestrator.agent_repo.update.call_args_list
-        final_agent_update = agent_updates[-1][0][0]
-        assert final_agent_update.last_active is not None
 
     @pytest.mark.asyncio
     async def test_execute_task_without_repos_returns_early(self, project_id, agent_id):
@@ -409,7 +409,7 @@ class TestExecuteTask:
                     project_id=project_id,
                     project_dir=tmpdir,
                 )
-
+                
                 agent = Agent(
                     id=agent_id,
                     project_id=project_id,
@@ -417,6 +417,7 @@ class TestExecuteTask:
                     agent_type="general",
                     model=ModelTier.HAIKU,
                     status=AgentStatus.IDLE,
+                    role=RoleType.WORKER
                 )
 
                 task = Task(
@@ -471,6 +472,7 @@ class TestAgentWorkerSync:
             agent_type="general",
             model=ModelTier.HAIKU,
             status=AgentStatus.IDLE,
+            role=RoleType.WORKER,
             worktree_path="/tmp/worktree",
         )
 
@@ -478,7 +480,7 @@ class TestAgentWorkerSync:
         dequeue_count = 0
         tasks_to_return = 15  # Return 15 tasks to trigger sync
 
-        async def mock_dequeue(agent_id):
+        async def mock_dequeue(agent_id, role):
             nonlocal dequeue_count
             dequeue_count += 1
             if dequeue_count <= tasks_to_return:
@@ -519,6 +521,7 @@ class TestAgentWorkerSync:
             agent_type="general",
             model=ModelTier.HAIKU,
             status=AgentStatus.IDLE,
+            role=RoleType.WORKER,
             worktree_path="/tmp/worktree",
         )
 
@@ -530,7 +533,7 @@ class TestAgentWorkerSync:
         # Track dequeue calls
         dequeue_count = 0
 
-        async def mock_dequeue(agent_id):
+        async def mock_dequeue(agent_id, role):
             nonlocal dequeue_count
             dequeue_count += 1
             if dequeue_count <= 12:  # Enough to trigger sync

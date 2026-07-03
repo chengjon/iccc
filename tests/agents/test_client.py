@@ -35,10 +35,13 @@ class TestClaudeClientInit:
 
     def test_init_without_api_key_raises(self):
         """Test initialization without API key raises ValueError."""
-        with patch.dict("os.environ", {}, clear=True):
-            with patch("iccc.agents.client.os.getenv", return_value=None):
-                with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not provided"):
-                    ClaudeClient()
+        # Mock get_config to return config with empty API key
+        mock_config = MagicMock()
+        mock_config.anthropic.api_key = ""
+        
+        with patch("iccc.agents.client.get_config", return_value=mock_config):
+            with pytest.raises(ValueError, match="ANTHROPIC_API_KEY not provided"):
+                ClaudeClient(api_key=None)
 
     def test_init_with_redis_client(self):
         """Test initialization with Redis client for distributed rate limiting."""

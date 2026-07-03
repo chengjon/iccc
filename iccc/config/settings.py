@@ -81,6 +81,7 @@ class ObservabilityConfig(BaseModel):
     server_host: str = Field(default="0.0.0.0")
     server_port: int = Field(default=8000, ge=1, le=65535)
     sqlite_path: str = Field(default="./data/events.db")
+    enable_metrics: bool = Field(default=True)
 
 
 class RetryConfig(BaseModel):
@@ -179,6 +180,8 @@ class ICCCConfig(BaseModel):
                 config_dict.setdefault("mongodb", {})["database"] = mongo_dbname
         elif mongo_uri := os.getenv("ICCC_MONGODB_URI"):
             config_dict.setdefault("mongodb", {})["uri"] = mongo_uri
+            if mongo_db := (os.getenv("ICCC_MONGODB_DATABASE") or os.getenv("MONGODB_DBNAME")):
+                config_dict.setdefault("mongodb", {})["database"] = mongo_db
         elif mongo_host and mongo_dbname:
             # Build URI from components
             port = mongo_port or "27017"
@@ -259,6 +262,9 @@ class ICCCConfig(BaseModel):
 
         if mongo_uri := (os.getenv("MONGODB_URL") or os.getenv("ICCC_MONGODB_URI")):
             updates.setdefault("mongodb", {})["uri"] = mongo_uri
+            # Also allow overriding database if provided explicitly
+            if mongo_db := (os.getenv("MONGODB_DBNAME") or os.getenv("ICCC_MONGODB_DATABASE")):
+                updates.setdefault("mongodb", {})["database"] = mongo_db
         elif mongo_host and mongo_dbname:
             port = mongo_port or "27017"
             if mongo_username and mongo_password:

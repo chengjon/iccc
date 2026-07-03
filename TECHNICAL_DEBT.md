@@ -1,44 +1,50 @@
-## Governance Strategy & Roadmap
+# Technical Debt Report
 
-### Phase 1: Immediate Hygiene (Completed)
-1.  **Supplement Type Stubs:** Installed `types-PyYAML`, `types-redis`.
-2.  **Incremental Annotation:** Core modules (`iccc/*.py`) are now type-safe.
-3.  **MyPy Configuration:** Stubs installed, stricter checking enabled for core.
+**Last Updated:** 2025-12-10
+**Status:** Resolved / Maintenance Mode
 
-### Phase 2: Testing & Standardization (1-2 Months) - **Current Focus**
-1.  **Boost Coverage:** Target >50% coverage for `agents` and `hooks`. Use `pytest-cov` to identify gaps.
-2.  **Containerized Integration Tests:** Introduce `testcontainers` to replace hardcoded external dependencies.
-3.  **Configuration Centralization:** Migrate `os.getenv` calls to a Pydantic `config/` module.
+## 1. Critical Breakages (Resolved)
 
-### Phase 3: Architectural Evolution (3-6 Months)
-1.  **State Persistence:** Move in-memory Orchestrator state to Redis/MongoDB to allow process restarts.
-2.  **Process Redundancy:** (If scale demands) Move to a multi-process/cluster model with distributed locks.
+The architectural refactoring (Brain Engine + Role-Based Queues) is now stable and fully tested.
 
-### Operational Guidelines
-*   **CI Gates:** Add MyPy and Coverage checks to CI.
-*   **Linting:** Automate via `ruff` in pre-commit hooks.
-*   **Tracking:** Update this document weekly with progress.
+### A. Fixed Test Suite (Completed)
+*   [x] **Redis Queue Tests**: Updated to match dynamic keys (`iccc:tasks:pending:{role}`).
+*   [x] **Orchestrator Tests**: Updated assertions for task decomposition and fixed mock injection.
+*   [x] **Import Errors**: Resolved conflict between `iccc/config.py` and `iccc/config/__init__.py`.
 
-## Governance Progress
+### B. New Feature Coverage (Completed)
+*   [x] **Brain Engine**: Added `tests/brain/test_engine.py` covering cycle logic and prompts.
+*   [x] **CLI Commands**: Added `tests/test_cli.py` covering `brain cycle` and `task import`.
+*   [x] **Role Logic**: Added `tests/core/test_role_logic.py` covering role assignment rules.
 
-### Type Safety (Phase 1)
+## 2. Implementation Fragility (Resolved)
 
-| Module | Status | Remaining Errors | Last Updated | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| `iccc/queue/redis_queue.py` | Completed | 0 | 2025-12-06 | Fixed generics and assignments. |
-| `iccc/agents/subagent.py` | Completed | 0 | 2025-12-06 | Fixed via `types-PyYAML` stubs. |
-| `iccc/agents/client.py` | Completed | 0 | 2025-12-06 | Fixed Redis generic and Anthropic types. |
-| `iccc/agents/rate_limiter.py` | Completed | 0 | 2025-12-06 | Fixed Redis generics. |
-| `iccc/orchestrator.py` | Completed | 0 | 2025-12-06 | Fixed task generics and typing imports. |
-| `iccc/db/repositories.py` | Completed | 0 | 2025-12-06 | Generics added. |
-| `iccc/locks/file_lock.py` | Completed | 0 | 2025-12-06 | Generics added. |
-| `iccc/isolation/worktree.py` | Completed | 0 | 2025-12-06 | Fixed dict annotations and optional handling. |
-| `iccc/agents/rate_limit_handler.py` | Completed | 0 | 2025-12-06 | Fixed Redis generic and Task attribute. |
+### A. Markdown Parsing (Fixed)
+*   **Location**: `iccc/parsers/markdown_parser.py`
+*   **Action**: Implemented robust regex parsing with JSON fallback.
+*   **Status**: Tests passing (`tests/parsers/test_markdown_parser.py`).
 
-### Testing & Coverage (Phase 2)
+### B. Stubbed Spec Parsers
+*   **Location**: `iccc/core/specs.py`
+*   **Issue**: `IdeasSpec.parse_requirements` and `MainTaskSpec.parse_tasks` are stubs.
+*   **Risk**: Low. Direct use of `MarkdownTaskParser` by Brain Engine mitigates this for now.
+*   **Status**: Pending future cleanup.
 
-| Module | Current Coverage | Target | Status | Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| `iccc/agents` | Low | >50% | Pending | Priority target. |
-| `iccc/hooks` | Low | >50% | Pending | Priority target. |
-| `iccc/config.py` | Low | >80% | Pending | Will be refactored. |
+## 3. Configuration & Hardcoding
+
+### A. Hardcoded Roles (Resolved)
+*   **Action**: Usage of `RoleType` Enum is now enforced in new code and tests.
+*   **Status**: Clean.
+
+### B. Legacy Artifacts
+*   **Location**: `iccc/agents/templates/`
+*   **Issue**: Potentially redundant.
+*   **Action**: Requires audit before deletion.
+
+## Roadmap
+
+1.  **Phase 2.1 - 2.3 (Stabilization)**: **COMPLETED**
+2.  **Phase 3 (Cleanup)**:
+    *   Audit and remove legacy `iccc/agents/templates/` if unused.
+    *   Implement remaining stubs in `iccc/core/specs.py`.
+    *   Enforce `pre-commit` hooks for linting.

@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from litestar import Controller, get, post
+from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.exceptions import NotFoundException
 
@@ -17,7 +18,6 @@ from iccc.api.schemas import (
     GateResultSchema,
 )
 from iccc.db.repositories import (
-    MongoDBClient,
     ProjectRepository,
     QualityCheckRepository,
 )
@@ -37,18 +37,14 @@ from iccc.quality.gates import (
 logger = logging.getLogger(__name__)
 
 
-async def provide_project_repo() -> ProjectRepository:
+async def provide_project_repo(state: State) -> ProjectRepository:
     """Dependency injection for ProjectRepository."""
-    db_client = MongoDBClient()
-    await db_client.connect()
-    return ProjectRepository(db_client)
+    return ProjectRepository(db_client=state.db_client)
 
 
-async def provide_quality_check_repo() -> QualityCheckRepository:
+async def provide_quality_check_repo(state: State) -> QualityCheckRepository:
     """Dependency injection for QualityCheckRepository."""
-    db_client = MongoDBClient()
-    await db_client.connect()
-    return QualityCheckRepository(db_client)
+    return QualityCheckRepository(db_client=state.db_client)
 
 
 class QualityController(Controller):

@@ -11,6 +11,7 @@ import click
 
 from iccc.agents.model_selector import ModelSelector
 from iccc.agents.subagent import SubagentLoader
+from iccc.core.instruction_processor import process_instruction
 from iccc.db.repositories import (
     AgentRepository,
     MongoDBClient,
@@ -276,6 +277,82 @@ def task_list(project_name: str, status: str | None) -> None:
     asyncio.run(_list())
 
 
+@task.command("import")
+@click.option("--project", "project_name", required=True, help="Project name")
+@click.option("--file", "file_path", default=".iccc/.plans/current_tasks.json", help="Path to tasks JSON file")
+def task_import(project_name: str, file_path: str) -> None:
+    """Import tasks from a JSON plan file."""
+    import json
+    from iccc.queue.redis_queue import RedisTaskQueue
+    from iccc.models.entities import RoleType
+
+    async def _import() -> None:
+        path = Path(file_path)
+        if not path.exists():
+            click.echo(f"❌ File not found: {path}", err=True)
+            return
+
+        try:
+            with open(path, "r") as f:
+                tasks_data = json.load(f)
+        except json.JSONDecodeError:
+            click.echo(f"❌ Invalid JSON in file: {path}", err=True)
+            return
+
+        client = MongoDBClient()
+        await client.connect()
+
+        # Find project
+        project_repo = ProjectRepository(client)
+        project_obj = await project_repo.get_by_name(project_name)
+        if not project_obj:
+            await client.disconnect()
+            click.echo(f"❌ Project '{project_name}' not found", err=True)
+            sys.exit(1)
+
+        task_repo = TaskRepository(client)
+        task_queue = RedisTaskQueue()
+        await task_queue.connect()
+
+        count = 0
+        for item in tasks_data:
+            try:
+                # Map string type to enum
+                t_type_str = item.get("task_type", "general_coding").lower()
+                try:
+                    t_type = TaskType(t_type_str)
+                except ValueError:
+                    t_type = TaskType.GENERAL_CODING
+
+                task = Task(
+                    project_id=project_obj.id,
+                    description=f"{item.get('title')}: {item.get('description')}",
+                    task_type=t_type,
+                    status=TaskStatus.PENDING,
+                    metadata={"original_id": item.get("id")}
+                )
+                
+                await task_repo.create(task)
+
+                # Determine role
+                role = RoleType.WORKER
+                if t_type in [TaskType.CODE_REVIEW, TaskType.ARCHITECTURE_DESIGN, TaskType.SECURITY_AUDIT]:
+                    role = RoleType.MANAGER
+                
+                await task_queue.enqueue(task, role=role)
+                count += 1
+                click.echo(f"  • Imported: {task.description[:50]}... -> {role}")
+
+            except Exception as e:
+                click.echo(f"  ⚠️ Failed to import task: {e}")
+
+        await client.disconnect()
+        await task_queue.disconnect()
+        click.echo(f"✅ Successfully imported {count} tasks.")
+
+    asyncio.run(_import())
+
+
 @cli.command("presets")
 def list_presets() -> None:
     """List available agent presets."""
@@ -288,6 +365,224 @@ def list_presets() -> None:
     click.echo("Available agent presets:")
     for agent_name in agents:
         click.echo(f"  • {agent_name}")
+
+
+@cli.group()
+def iccc() -> None:
+    """iCCC 指令系统 - 多CLI协作平台的核心指令集合"""
+    pass
+
+
+@iccc.command("workflow")
+@click.argument("description")
+def workflow_command(description: str) -> None:
+    """执行标准工作流（中等复杂度功能开发）"""
+    async def _execute() -> None:
+        try:
+            command = f"/iccc/workflow {description}"
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ 指令执行成功")
+            click.echo(f"   指令ID: {instruction.id}")
+            click.echo(f"   指令类型: {instruction.type.value}")
+            click.echo(f"   状态: {instruction.status.value}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                click.echo(f"   结果: {instruction.result}")
+
+        except Exception as e:
+            click.echo(f"❌ 指令执行失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_execute())
+
+
+@iccc.command("multi-workflow")
+@click.argument("description")
+def multi_workflow_command(description: str) -> None:
+    """执行复杂工作流（高复杂度多代理协同开发）"""
+    async def _execute() -> None:
+        try:
+            command = f"/iccc/multi-workflow {description}"
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ 多代理工作流执行成功")
+            click.echo(f"   指令ID: {instruction.id}")
+            click.echo(f"   指令类型: {instruction.type.value}")
+            click.echo(f"   状态: {instruction.status.value}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                click.echo(f"   结果: {instruction.result}")
+
+        except Exception as e:
+            click.echo(f"❌ 多代理工作流执行失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_execute())
+
+
+@iccc.command("spec")
+@click.argument("description")
+@click.option("--output", "-o", help="规格输出文件名")
+def spec_command(description: str, output: str | None) -> None:
+    """创建详细规格文档"""
+    async def _create() -> None:
+        try:
+            command = f"/iccc/spec {description}"
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ 规格文档创建成功")
+            click.echo(f"   指令ID: {instruction.id}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                result = instruction.result
+                if "spec_file" in result:
+                    click.echo(f"   规格文件: {result['spec_file']}")
+
+        except Exception as e:
+            click.echo(f"❌ 创建规格文档失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_create())
+
+
+@iccc.command("ultra")
+@click.argument("analysis_target")
+def ultra_command(analysis_target: str) -> None:
+    """深度分析复杂技术问题"""
+    async def _analyze() -> None:
+        try:
+            command = f"/iccc/ultra {analysis_target}"
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ 深度分析完成")
+            click.echo(f"   指令ID: {instruction.id}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                result = instruction.result
+                click.echo(f"   分析类型: {result.get('analysis_type', '未知')}")
+                click.echo(f"   分析深度: {result.get('depth', '未知')}")
+                click.echo(f"   状态: {result.get('status', '未知')}")
+
+        except Exception as e:
+            click.echo(f"❌ 深度分析失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_analyze())
+
+
+@iccc.command("reflection")
+@click.argument("target")
+def reflection_command(target: str) -> None:
+    """工作反思与改进建议"""
+    async def _reflect() -> None:
+        try:
+            command = f"/iccc/reflection {target}"
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ 反思分析完成")
+            click.echo(f"   指令ID: {instruction.id}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                result = instruction.result
+                click.echo(f"   分析状态: {result.get('status', '未知')}")
+
+        except Exception as e:
+            click.echo(f"❌ 反思分析失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_reflect())
+
+
+@iccc.command("review")
+@click.argument("target")
+@click.option("--type", "review_type", default="code", help="审查类型: code, security, performance")
+def review_command(target: str, review_type: str) -> None:
+    """代码质量审查"""
+    async def _review() -> None:
+        try:
+            if review_type == "code":
+                command = f"/iccc/review {target}"
+            else:
+                command = f"/iccc/review --type {review_type} {target}"
+
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ {review_type}审查完成")
+            click.echo(f"   指令ID: {instruction.id}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                result = instruction.result
+                click.echo(f"   审查状态: {result.get('status', '未知')}")
+
+        except Exception as e:
+            click.echo(f"❌ 审查失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_review())
+
+
+@iccc.command("status")
+@click.option("--instruction-id", help="查看指定指令状态")
+def status_command(instruction_id: str | None) -> None:
+    """查看指令执行状态"""
+    async def _show_status() -> None:
+        try:
+            if instruction_id:
+                command = f"/iccc/status {instruction_id}"
+                instruction = await process_instruction(command)
+
+                click.echo(f"✅ 指令状态查询")
+                click.echo(f"   指令ID: {instruction.id}")
+                click.echo(f"   状态: {instruction.status.value}")
+                click.echo(f"   创建时间: {instruction.created_at}")
+                click.echo(f"   开始时间: {instruction.started_at or '未开始'}")
+                click.echo(f"   完成时间: {instruction.completed_at or '未完成'}")
+            else:
+                command = "/iccc/status show"
+                instruction = await process_instruction(command)
+
+                click.echo("✅ 系统状态查询")
+
+        except Exception as e:
+            click.echo(f"❌ 状态查询失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_show_status())
+
+
+@iccc.command("config")
+@click.argument("action")
+@click.option("--key", help="配置键")
+@click.option("--value", help="配置值")
+def config_command(action: str, key: str | None, value: str | None) -> None:
+    """系统配置管理"""
+    async def _config() -> None:
+        try:
+            if action in ["set", "get"] and key:
+                if action == "set" and value:
+                    command = f"/iccc config set {key} {value}"
+                else:
+                    command = f"/iccc config get {key}"
+            else:
+                command = f"/iccc config {action}"
+
+            instruction = await process_instruction(command)
+
+            click.echo(f"✅ 配置操作完成")
+            click.echo(f"   操作: {action}")
+            click.echo(f"   状态: {instruction.status.value}")
+
+            if hasattr(instruction, 'result') and instruction.result:
+                result = instruction.result
+                if "config_values" in result:
+                    click.echo(f"   配置值: {result['config_values']}")
+
+        except Exception as e:
+            click.echo(f"❌ 配置操作失败: {e}", err=True)
+            sys.exit(1)
+
+    asyncio.run(_config())
 
 
 @cli.command("start")
@@ -646,6 +941,39 @@ def migrate_create(name: str, description: str | None) -> None:
     except Exception as e:
         click.echo(click.style(f"✗ Failed to create migration: {e}", fg="red"), err=True)
         sys.exit(1)
+
+
+@cli.group()
+def brain() -> None:
+    """Manage the Brain agent (Spec-Driven Development)."""
+    pass
+
+
+@brain.command("cycle")
+@click.option("--request", help="Optional user request/input")
+def brain_cycle(request: str | None) -> None:
+    """Run a Brain cognitive cycle (Think -> Spec -> Plan)."""
+    from iccc.brain.engine import BrainEngine
+
+    async def _run() -> None:
+        try:
+            # Assume running from current working directory which should be project root
+            project_root = Path.cwd()
+            
+            click.echo(click.style("🧠 Brain is thinking...", fg="cyan"))
+            engine = BrainEngine(project_root)
+            await engine.run_cycle(user_request=request or "")
+            
+            click.echo(click.style("✅ Brain cycle completed successfully.", fg="green"))
+            click.echo("Updated documents:")
+            click.echo("  • IDEAS.md")
+            click.echo("  • MAINTASK.md")
+            
+        except Exception as e:
+            click.echo(click.style(f"❌ Brain cycle failed: {e}", fg="red"), err=True)
+            sys.exit(1)
+
+    asyncio.run(_run())
 
 
 def main() -> None:

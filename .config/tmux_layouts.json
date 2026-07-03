@@ -1,0 +1,113 @@
+{
+  "layouts": {
+    "default": {
+      "name": "默认监控视图",
+      "description": "显示所有核心监控面板",
+      "windows": [
+        {"name": "agents", "title": "Agent状态", "layout": "main-vertical"},
+        {"name": "tasks", "title": "任务跟踪", "layout": "main-horizontal"},
+        {"name": "events", "title": "实时事件"},
+        {"name": "logs", "title": "系统日志", "layout": "even-horizontal"},
+        {"name": "quality", "title": "质量监控", "layout": "even-horizontal"},
+        {"name": "system", "title": "系统状态", "layout": "tiled"}
+      ]
+    },
+    "minimal": {
+      "name": "最小监控视图",
+      "description": "只显示最重要的监控信息",
+      "windows": [
+        {"name": "agents", "title": "Agent状态"},
+        {"name": "tasks", "title": "任务跟踪"},
+        {"name": "events", "title": "实时事件"}
+      ]
+    },
+    "quality_focus": {
+      "name": "质量监控视图",
+      "description": "专注于代码质量和测试监控",
+      "windows": [
+        {"name": "quality", "title": "质量监控", "layout": "main-horizontal"},
+        {"name": "test", "title": "测试结果"},
+        {"name": "coverage", "title": "覆盖率趋势"},
+        {"name": "review", "title": "审核队列"}
+      ]
+    },
+    "debug": {
+      "name": "调试视图",
+      "description": "用于问题排查和调试",
+      "windows": [
+        {"name": "error_logs", "title": "错误日志"},
+        {"name": "debug_events", "title": "调试事件"},
+        {"name": "system_checks", "title": "系统检查"},
+        {"name": "agent_trace", "title": "Agent跟踪"}
+      ]
+    }
+  },
+  "window_configs": {
+    "agents": {
+      "refresh_interval": 2,
+      "panels": [
+        {"title": "Brain", "height": 30, "command": "brain_status"},
+        {"title": "Managers", "height": 30, "command": "managers_status"},
+        {"title": "Workers", "height": 30, "command": "workers_status"},
+        {"title": "Statistics", "command": "agent_stats"}
+      ]
+    },
+    "tasks": {
+      "refresh_interval": 3,
+      "panels": [
+        {"title": "Active Tasks", "command": "active_tasks"},
+        {"title": "Task Queue", "command": "task_queue"},
+        {"title": "Statistics", "command": "task_stats"}
+      ]
+    },
+    "events": {
+      "refresh_interval": 1,
+      "panels": [
+        {"title": "Event Stream", "command": "event_stream"}
+      ]
+    },
+    "logs": {
+      "refresh_interval": 0,
+      "panels": [
+        {"title": "Application Log", "command": "app_log"},
+        {"title": "Error Log", "command": "error_log"}
+      ]
+    },
+    "quality": {
+      "refresh_interval": 10,
+      "panels": [
+        {"title": "Recent Reviews", "command": "recent_reviews"},
+        {"title": "Test Coverage", "command": "test_coverage"},
+        {"title": "Quality Metrics", "command": "quality_metrics"}
+      ]
+    },
+    "system": {
+      "refresh_interval": 5,
+      "panels": [
+        {"title": "Resources", "command": "system_resources"},
+        {"title": "MongoDB", "command": "mongodb_status"},
+        {"title": "Redis", "command": "redis_status"},
+        {"title": "Network", "command": "network_status"}
+      ]
+    }
+  },
+  "commands": {
+    "brain_status": "watch -n 2 'echo \"🧠 Brain Agent\"; cat ~/.iccc/.state/agent-status/brain.json 2>/dev/null || echo \"Offline\"'",
+    "managers_status": "watch -n 3 'echo \"👨‍💼 Managers\"; ls ~/.iccc/.state/agent-status/managers/*.json 2>/dev/null | wc -l'",
+    "workers_status": "watch -n 3 'echo \"👷 Workers\"; ls ~/.iccc/.state/agent-status/workers/*.json 2>/dev/null | wc -l'",
+    "agent_stats": "watch -n 5 'echo \"📊 Statistics\"; find ~/.iccc/.state/agent-status/ -name \"*.json\" | wc -l'",
+    "active_tasks": "watch -n 2 'echo \"📋 Active Tasks\"; cat ~/.iccc/.state/task-states/current-tasks.json 2>/dev/null | jq length'",
+    "task_queue": "watch -n 3 'echo \"⏳ Queue\"; redis-cli -n 1 LLEN iccc:task:queue 2>/dev/null || echo 0'",
+    "task_stats": "watch -n 10 'echo \"📈 Stats\"; cat ~/.iccc/.state/task-states/task-stats.json 2>/dev/null || echo \"No stats\"'",
+    "event_stream": "tail -f ~/.iccc/.state/events/events.log 2>/dev/null || echo \"No events\"",
+    "app_log": "tail -f ~/.iccc/.logs/app.log 2>/dev/null || echo \"No logs\"",
+    "error_log": "tail -f ~/.iccc/.logs/error.log 2>/dev/null || echo \"No errors\"",
+    "recent_reviews": "watch -n 10 'echo \"🔍 Reviews\"; ls -t ~/.iccc/.state/quality-reviews/*.json 2>/dev/null | head -5 | wc -l'",
+    "test_coverage": "watch -n 30 'echo \"📊 Coverage\"; cat ~/.iccc/.state/metrics/test-coverage.json 2>/dev/null | jq -r \".[-1].coverage || \"N/A\"\"",
+    "quality_metrics": "watch -n 10 'echo \"✨ Metrics\"; cat ~/.iccc/.state/metrics/quality-metrics.json 2>/dev/null || echo \"No metrics\"",
+    "system_resources": "watch -n 5 'echo \"💻 Resources\"; echo \"CPU: $(top -bn1 | grep Cpu | awk \"{print \\$2}\")\"; echo \"Mem: $(free -m | awk NR==2\\'{printf \"%.1f%%\", \\$3*100/\\$2}\\')\"'",
+    "mongodb_status": "watch -n 10 'echo \"🍃 MongoDB\"; mongo --eval \"db.adminCommand(\\\"ismaster\\\")\" 2>/dev/null | grep ismaster || echo \"Down\"",
+    "redis_status": "watch -n 5 'echo \"🔴 Redis\"; redis-cli ping 2>/dev/null || echo \"Down\"",
+    "network_status": "watch -n 10 'echo \"🌐 Network\"; netstat -tlnp 2>/dev/null | grep -E \\\":8000|:6379|:27017\\\" || echo \"No connections\""
+  }
+}

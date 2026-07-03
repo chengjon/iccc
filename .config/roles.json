@@ -1,0 +1,284 @@
+{
+  "roles": {
+    "brain": {
+      "name": "大脑",
+      "description": "负责任务分解、方案制定、最终审核等高级智力工作",
+      "model": "opus",
+      "max_concurrent": 1,
+      "capabilities": [
+        "需求分析",
+        "任务分解",
+        "方案设计",
+        "创新思维",
+        "复杂问题解决",
+        "最终决策",
+        "质量把控"
+      ],
+      "permissions": [
+        "system_access",
+        "task_distribution",
+        "agent_management",
+        "final_approval",
+        "config_modification"
+      ],
+      "tools": [
+        "Read", "Write", "Edit", "Task",
+        "WebSearch", "WebFetch", "AskUserQuestion",
+        "TodoWrite", "EnterPlanMode", "ExitPlanMode"
+      ]
+    },
+    "manager": {
+      "specializations": {
+        "architecture": {
+          "name": "架构管理师",
+          "description": "负责系统架构设计、技术选型、架构评审",
+          "model": "sonnet",
+          "capabilities": [
+            "架构设计",
+            "技术选型",
+            "性能优化",
+            "可扩展性设计",
+            "安全架构",
+            "架构评审"
+          ],
+          "expertise": [
+            "微服务架构",
+            "分布式系统",
+            "云原生架构",
+            "领域驱动设计",
+            "设计模式"
+          ]
+        },
+        "development": {
+          "name": "开发管理师",
+          "description": "负责开发任务管理、进度跟踪、技术指导",
+          "model": "sonnet",
+          "capabilities": [
+            "任务分解",
+            "进度管理",
+            "技术评审",
+            "代码指导",
+            "风险识别",
+            "团队协作"
+          ],
+          "expertise": [
+            "敏捷开发",
+            "代码审查",
+            "持续集成",
+            "测试策略",
+            "文档管理"
+          ]
+        },
+        "quality": {
+          "name": "质量管理师",
+          "description": "负责质量保证、测试策略、缺陷管理",
+          "model": "sonnet",
+          "capabilities": [
+            "质量策划",
+            "测试设计",
+            "缺陷分析",
+            "质量度量",
+            "过程改进",
+            "标准制定"
+          ],
+          "expertise": [
+            "测试金字塔",
+            "TDD/BDD",
+            "自动化测试",
+            "性能测试",
+            "安全测试"
+          ]
+        },
+        "product": {
+          "name": "产品管理师",
+          "description": "负责需求管理、产品规划、用户体验",
+          "model": "sonnet",
+          "capabilities": [
+            "需求分析",
+            "产品规划",
+            "用户研究",
+            "功能设计",
+            "优先级排序",
+            "产品验收"
+          ],
+          "expertise": [
+            "用户故事",
+            "原型设计",
+            "数据分析",
+            "A/B测试",
+            "产品指标"
+          ]
+        }
+      },
+      "general_settings": {
+        "max_concurrent_per_type": 3,
+        "permissions": [
+          "task_assignment",
+          "worker_supervision",
+          "quality_control",
+          "report_generation"
+        ]
+      }
+    },
+    "worker": {
+      "specializations": {
+        "frontend": {
+          "name": "前端开发工程师",
+          "model": "flexible",
+          "capabilities": [
+            "UI实现",
+            "交互开发",
+            "响应式设计",
+            "性能优化",
+            "浏览器兼容",
+            "组件化开发"
+          ],
+          "skills": [
+            "react",
+            "vue",
+            "angular",
+            "typescript",
+            "webpack",
+            "css3"
+          ]
+        },
+        "backend": {
+          "name": "后端开发工程师",
+          "model": "flexible",
+          "capabilities": [
+            "API开发",
+            "数据库设计",
+            "业务逻辑",
+            "性能调优",
+            "安全防护",
+            "服务部署"
+          ],
+          "skills": [
+            "python",
+            "nodejs",
+            "java",
+            "go",
+            "mysql",
+            "mongodb",
+            "redis"
+          ]
+        },
+        "testing": {
+          "name": "测试工程师",
+          "model": "flexible",
+          "capabilities": [
+            "测试用例设计",
+            "自动化测试",
+            "性能测试",
+            "缺陷跟踪",
+            "测试报告",
+            "质量分析"
+          ],
+          "skills": [
+            "pytest",
+            "jest",
+            "cypress",
+            "jmeter",
+            "selenium"
+          ]
+        },
+        "documentation": {
+          "name": "文档工程师",
+          "model": "haiku",
+          "capabilities": [
+            "技术文档",
+            "用户手册",
+            "API文档",
+            "知识管理",
+            "文档维护",
+            "内容优化"
+          ],
+          "skills": [
+            "markdown",
+            "openapi",
+            "docusaurus",
+            "gitbook",
+            "内容管理"
+          ]
+        },
+        "security": {
+          "name": "安全工程师",
+          "model": "sonnet",
+          "capabilities": [
+            "安全审计",
+            "漏洞扫描",
+            "渗透测试",
+            "安全加固",
+            "合规检查",
+            "应急响应"
+          ],
+          "skills": [
+            "owasp",
+            "安全测试",
+            "加密技术",
+            "身份认证",
+            "权限控制"
+          ]
+        },
+        "devops": {
+          "name": "运维工程师",
+          "model": "flexible",
+          "capabilities": [
+            "CI/CD",
+            "容器化",
+            "监控告警",
+            "自动化部署",
+            "基础设施",
+            "故障处理"
+          ],
+          "skills": [
+            "docker",
+            "kubernetes",
+            "jenkins",
+            "terraform",
+            "ansible",
+            "prometheus"
+          ]
+        }
+      },
+      "general_settings": {
+        "max_concurrent_per_type": 20,
+        "permissions": [
+          "code_write",
+          "test_execution",
+          "document_creation",
+          "tool_usage"
+        ]
+      }
+    }
+  },
+  "model_mapping": {
+    "opus": {
+      "roles": ["brain"],
+      "complexity_threshold": 0.8,
+      "cost_factor": 10.0,
+      "speed_factor": 0.5
+    },
+    "sonnet": {
+      "roles": ["manager", "security"],
+      "complexity_threshold": 0.5,
+      "cost_factor": 3.0,
+      "speed_factor": 0.8
+    },
+    "haiku": {
+      "roles": ["documentation"],
+      "complexity_threshold": 0.2,
+      "cost_factor": 1.0,
+      "speed_factor": 1.0
+    },
+    "flexible": {
+      "roles": ["worker"],
+      "auto_select": {
+        "simple": "haiku",
+        "moderate": "sonnet",
+        "complex": "sonnet",
+        "critical": "opus"
+      }
+    }
+  }
+}

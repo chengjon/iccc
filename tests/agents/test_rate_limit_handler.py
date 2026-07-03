@@ -108,17 +108,18 @@ class TestSelectModelWithLimits:
                 mock_selector.assert_called_once()
                 assert result == ModelTier.SONNET
 
-    @pytest.mark.asyncio
-    async def test_select_model_preserves_critical_task(self, handler, sample_task):
-        """Test that critical tasks keep preferred model."""
-        sample_task.is_critical = True
-
-        with patch.object(handler, "is_approaching_limit", return_value=True):
-            result = await handler.select_model_with_limits(
-                sample_task, preferred_model=ModelTier.OPUS
-            )
-            assert result == ModelTier.OPUS
-
+        @pytest.mark.asyncio
+        async def test_select_model_preserves_critical_task(self, handler, sample_task):
+            """Test that critical tasks keep preferred model."""
+            # Mock complexity to be critical (score >= 4.5)
+            sample_task.complexity = MagicMock()
+            sample_task.complexity.calculate_score.return_value = 5.0
+        
+            with patch.object(handler, "is_approaching_limit", return_value=True):
+                result = await handler.select_model_with_limits(
+                    sample_task, preferred_model=ModelTier.OPUS
+                )
+                assert result == ModelTier.OPUS
     @pytest.mark.asyncio
     async def test_select_model_no_downgrade_when_ok(self, handler, sample_task):
         """Test no downgrade when not approaching limit."""

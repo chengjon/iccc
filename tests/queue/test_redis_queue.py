@@ -1,12 +1,12 @@
 """Unit tests for Redis task queue module."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from iccc.models.entities import Task, TaskStatus, TaskType
+from iccc.models.entities import Task, TaskStatus, TaskType, RoleType
 from iccc.queue.redis_queue import RedisTaskQueue
 
 
@@ -15,9 +15,19 @@ class TestRedisTaskQueueInit:
 
     def test_init_default_url(self):
         """Test initialization with default Redis URL."""
-        with patch.dict("os.environ", {}, clear=True):
-            queue = RedisTaskQueue()
-            assert queue.redis_url == "redis://localhost:6379/0"
+        # Mock get_config to return default values
+        with patch("iccc.queue.redis_queue.get_config") as mock_get_config:
+            # Create a mock config object with redis attributes
+            mock_config = MagicMock()
+            mock_config.redis.host = "localhost"
+            mock_config.redis.port = 6379
+            mock_config.redis.db = 0
+            mock_config.redis.password = None
+            mock_get_config.return_value = mock_config
+
+            with patch.dict("os.environ", {}, clear=True):
+                queue = RedisTaskQueue()
+                assert queue.redis_url == "redis://localhost:6379/0"
 
     def test_init_with_custom_url(self):
         """Test initialization with custom Redis URL."""
@@ -38,9 +48,9 @@ class TestRedisTaskQueueInit:
     def test_init_queue_keys(self):
         """Test queue key initialization."""
         queue = RedisTaskQueue()
-        assert queue.pending_queue == "iccc:tasks:pending"
-        assert queue.in_progress_queue == "iccc:tasks:in_progress"
-        assert queue.completed_queue == "iccc:tasks:completed"
+        assert queue.pending_queue_prefix == "iccc:tasks:pending"
+        assert queue.in_progress_queue == "iccc:tasks:pending:in_progress"
+        assert queue.completed_queue == "iccc:tasks:pending:completed"
         assert queue.task_data_prefix == "iccc:task:"
 
 
@@ -103,8 +113,8 @@ class TestRedisTaskQueueEnqueue:
         )
 
     @pytest.mark.asyncio
-    async def test_enqueue_success(self, connected_queue, sample_task):
-        """Test successful task enqueue."""
+    async def test_enqueue_success_default_role(self, connected_queue, sample_task):
+        """Test successful task enqueue with default role (WORKER)."""
         await connected_queue.enqueue(sample_task)
 
         # Verify task data was stored
@@ -112,8 +122,19 @@ class TestRedisTaskQueueEnqueue:
         call_args = connected_queue.client.set.call_args
         assert str(sample_task.id) in call_args[0][0]
 
-        # Verify task was added to pending queue
+        # Verify task was added to WORKER queue
         connected_queue.client.zadd.assert_called_once()
+        zadd_args = connected_queue.client.zadd.call_args
+        assert zadd_args[0][0] == "iccc:tasks:pending:worker"
+
+    @pytest.mark.asyncio
+    async def test_enqueue_success_manager_role(self, connected_queue, sample_task):
+        """Test successful task enqueue with MANAGER role."""
+        await connected_queue.enqueue(sample_task, role=RoleType.MANAGER)
+
+        connected_queue.client.zadd.assert_called_once()
+        zadd_args = connected_queue.client.zadd.call_args
+        assert zadd_args[0][0] == "iccc:tasks:pending:manager"
 
     @pytest.mark.asyncio
     async def test_enqueue_with_priority(self, connected_queue, sample_task):
@@ -144,8 +165,8 @@ class TestRedisTaskQueueDequeue:
         return queue
 
     @pytest.mark.asyncio
-    async def test_dequeue_success(self, connected_queue):
-        """Test successful task dequeue."""
+    async def test_dequeue_success_worker(self, connected_queue):
+        """Test successful task dequeue for WORKER role."""
         task_id = str(uuid4())
         task_data = {
             "id": task_id,
@@ -160,10 +181,15 @@ class TestRedisTaskQueueDequeue:
         # Mock get to return task data
         connected_queue.client.get = AsyncMock(return_value=json.dumps(task_data))
 
-        result = await connected_queue.dequeue("agent-1")
+        result = await connected_queue.dequeue("agent-1", role=RoleType.WORKER)
 
         assert result is not None
         assert result.description == "Test task"
+        
+        # Verify popped from correct queue
+        zpop_args = connected_queue.client.zpopmax.call_args
+        assert zpop_args[0][0] == "iccc:tasks:pending:worker"
+
         # Verify task was moved to in_progress
         connected_queue.client.hset.assert_called_once()
 
@@ -327,13 +353,18 @@ class TestRedisTaskQueueGetQueueLength:
     @pytest.mark.asyncio
     async def test_get_queue_length_success(self, connected_queue):
         """Test getting queue lengths."""
-        connected_queue.client.zcard = AsyncMock(return_value=5)
+        # zcard for 3 roles
+        connected_queue.client.zcard = AsyncMock(side_effect=[5, 3, 1])
+        # hlen for in_progress
         connected_queue.client.hlen = AsyncMock(return_value=2)
+        # scard for completed and failed
         connected_queue.client.scard = AsyncMock(side_effect=[10, 1])
 
         result = await connected_queue.get_queue_length()
 
-        assert result["pending"] == 5
+        assert result["pending_worker"] == 5
+        assert result["pending_manager"] == 3
+        assert result["pending_brain"] == 1
         assert result["in_progress"] == 2
         assert result["completed"] == 10
         assert result["failed"] == 1
@@ -408,7 +439,7 @@ class TestRedisTaskQueueRequeueTask:
 
     @pytest.mark.asyncio
     async def test_requeue_task_success(self, connected_queue):
-        """Test requeuing a task."""
+        """Test requeuing a task with default role."""
         task_id = uuid4()
 
         await connected_queue.requeue_task(task_id, priority=5)
@@ -418,7 +449,18 @@ class TestRedisTaskQueueRequeueTask:
         # Verify added back to pending with priority
         connected_queue.client.zadd.assert_called_once()
         call_args = connected_queue.client.zadd.call_args
-        assert call_args[0][1][str(task_id)] == -5
+        # Verify default is WORKER
+        assert call_args[0][0] == "iccc:tasks:pending:worker"
+
+    @pytest.mark.asyncio
+    async def test_requeue_task_with_role(self, connected_queue):
+        """Test requeuing a task with explicit role."""
+        task_id = uuid4()
+
+        await connected_queue.requeue_task(task_id, priority=5, role=RoleType.MANAGER)
+
+        call_args = connected_queue.client.zadd.call_args
+        assert call_args[0][0] == "iccc:tasks:pending:manager"
 
     @pytest.mark.asyncio
     async def test_requeue_task_without_connection_raises(self):

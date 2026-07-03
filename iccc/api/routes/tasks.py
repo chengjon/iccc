@@ -2,7 +2,8 @@
 
 from uuid import UUID
 
-from litestar import Controller, get, post, put
+from litestar import Controller, delete, get, post, put
+from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.exceptions import NotFoundException
 
@@ -10,9 +11,9 @@ from iccc.api.schemas import TaskCreate, TaskResponse, TaskUpdate
 from iccc.db.repositories import TaskRepository
 
 
-async def provide_task_repo() -> TaskRepository:
+async def provide_task_repo(state: State) -> TaskRepository:
     """Dependency injection for TaskRepository."""
-    return TaskRepository()
+    return TaskRepository(db_client=state.db_client)
 
 
 class TaskController(Controller):

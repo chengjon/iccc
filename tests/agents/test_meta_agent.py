@@ -73,16 +73,17 @@ class TestMetaAgent:
 
         assert meta._select_base_template("Documentation") == "code-reviewer"
 
-    @pytest.mark.asyncio
-    async def test_generate_agent_config_no_client(self):
-        """Should raise error if API client not initialized."""
-        meta = MetaAgent(api_key=None)
-
-        with pytest.raises(ValueError, match="Anthropic client not initialized"):
-            await meta.generate_agent_config(
-                name="test-agent", specialization="Testing"
-            )
-
+        @pytest.mark.asyncio
+        async def test_generate_agent_config_no_client(self):
+            """Should raise error if API client not initialized."""
+            # Ensure no API key in env
+            with patch.dict(os.environ, {}, clear=True):
+                meta = MetaAgent(api_key=None)
+            
+                with pytest.raises(ValueError, match="Anthropic client not initialized"):
+                    await meta.generate_agent_config(
+                        name="test-agent", specialization="Testing"
+                    )
     @pytest.mark.asyncio
     async def test_generate_agent_config_success(self):
         """Should generate agent config using AI."""

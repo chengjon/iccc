@@ -1,0 +1,159 @@
+{
+  "brain": {
+    "max_concurrent": 1,
+    "task_queue_size": 10,
+    "memory_limit": "1GB",
+    "allowed_tools": [
+      "Read", "Write", "Edit", "Bash",
+      "WebSearch", "WebFetch", "Task",
+      "ChatGPT", "CLI"
+    ],
+    "permissions": [
+      "system_access",
+      "cli_management",
+      "user_interaction"
+    ]
+  },
+  "managers": {
+    "architecture": {
+      "max_concurrent": 3,
+      "task_queue_size": 20,
+      "memory_limit": "512MB",
+      "specialized_tools": [
+        "WebFetch",
+        "diagram_generator",
+        "performance_profiler"
+      ]
+    },
+    "development": {
+      "max_concurrent": 5,
+      "task_queue_size": 30,
+      "memory_limit": "512MB",
+      "specialized_tools": [
+        "code_analyzer",
+        "dependency_scanner",
+        "test_generator"
+      ]
+    },
+    "quality": {
+      "max_concurrent": 3,
+      "task_queue_size": 25,
+      "memory_limit": "256MB",
+      "specialized_tools": [
+        "security_scanner",
+        "test_runner",
+        "coverage_analyzer"
+      ]
+    },
+    "product": {
+      "max_concurrent": 2,
+      "task_queue_size": 15,
+      "memory_limit": "256MB",
+      "specialized_tools": [
+        "user_story_analyzer",
+        "requirement_parser"
+      ]
+    }
+  },
+  "workers": {
+    "frontend": {
+      "max_concurrent": 15,
+      "task_queue_size": 50,
+      "memory_limit": "512MB",
+      "tools": [
+        "Edit", "Write", "Read", "Bash",
+        "npm", "yarn", "git"
+      ],
+      "capabilities": [
+        "react",
+        "vue",
+        "angular",
+        "css",
+        "typescript"
+      ]
+    },
+    "backend": {
+      "max_concurrent": 20,
+      "task_queue_size": 60,
+      "memory_limit": "512MB",
+      "tools": [
+        "Edit", "Write", "Read", "Bash",
+        "docker", "kubectl", "sql"
+      ],
+      "capabilities": [
+        "python",
+        "nodejs",
+        "java",
+        "go",
+        "database"
+      ]
+    },
+    "testing": {
+      "max_concurrent": 25,
+      "task_queue_size": 40,
+      "memory_limit": "256MB",
+      "tools": [
+        "Read", "Bash", "pytest",
+        "playwright", "selenium"
+      ],
+      "capabilities": [
+        "unit_testing",
+        "integration_testing",
+        "e2e_testing",
+        "performance_testing"
+      ]
+    },
+    "documentation": {
+      "max_concurrent": 5,
+      "task_queue_size": 20,
+      "memory_limit": "128MB",
+      "tools": [
+        "Read", "Write", "WebFetch",
+        "diagram_generator"
+      ],
+      "capabilities": [
+        "api_docs",
+        "user_guides",
+        "technical_writing"
+      ]
+    },
+    "security": {
+      "max_concurrent": 3,
+      "task_queue_size": 15,
+      "memory_limit": "512MB",
+      "tools": [
+        "Read", "Write", "Bash",
+        "security_scanner",
+        "penetration_tester"
+      ],
+      "capabilities": [
+        "security_audit",
+        "vulnerability_assessment",
+        "penetration_testing",
+        "compliance_checking"
+      ]
+    },
+    "devops": {
+      "max_concurrent": 10,
+      "task_queue_size": 30,
+      "memory_limit": "512MB",
+      "tools": [
+        "Read", "Write", "Bash",
+        "docker", "kubernetes",
+        "terraform", "ansible"
+      ],
+      "capabilities": [
+        "ci_cd",
+        "deployment",
+        "monitoring",
+        "infrastructure_as_code"
+      ]
+    }
+  },
+  "global_settings": {
+    "max_total_agents": 150,
+    "global_memory_limit": "8GB",
+    "cleanup_interval": 300,
+    "idle_timeout": 600
+  }
+}

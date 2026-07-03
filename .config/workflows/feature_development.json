@@ -1,0 +1,178 @@
+{
+  "name": "feature_development",
+  "description": "功能开发工作流",
+  "version": "1.0",
+  "phases": [
+    {
+      "phase": "analysis",
+      "name": "需求分析",
+      "steps": [
+        {
+          "step": 1,
+          "name": "分析用户需求",
+          "agent_type": "brain",
+          "required": true,
+          "output": "IDEAS.md",
+          "estimated_time": 30,
+          "dependencies": []
+        },
+        {
+          "step": 2,
+          "name": "审查现有代码库",
+          "agent_type": "brain",
+          "required": true,
+          "output": "codebase_analysis.md",
+          "estimated_time": 20,
+          "dependencies": []
+        }
+      ]
+    },
+    {
+      "phase": "planning",
+      "name": "规划设计",
+      "steps": [
+        {
+          "step": 1,
+          "name": "制定技术规范",
+          "agent_type": "brain",
+          "required": true,
+          "output": "INSTITUTION.md",
+          "estimated_time": 45,
+          "dependencies": ["IDEAS.md"]
+        },
+        {
+          "step": 2,
+          "name": "架构设计",
+          "agent_type": "manager",
+          "required": true,
+          "role": "architecture",
+          "output": "architecture.md",
+          "estimated_time": 60,
+          "dependencies": ["INSTITUTION.md"]
+        },
+        {
+          "step": 3,
+          "name": "任务分解",
+          "agent_type": "manager",
+          "required": true,
+          "role": "development",
+          "output": "MAINTASK.md",
+          "estimated_time": 30,
+          "dependencies": ["IDEAS.md", "INSTITUTION.md"]
+        }
+      ]
+    },
+    {
+      "phase": "development",
+      "name": "开发实现",
+      "steps": [
+        {
+          "step": 1,
+          "name": "前端开发",
+          "agent_type": "worker",
+          "required": false,
+          "role": "frontend",
+          "output": "frontend_implementation",
+          "estimated_time": 120,
+          "dependencies": ["architecture.md", "MAINTASK.md"]
+        },
+        {
+          "step": 2,
+          "name": "后端开发",
+          "agent_type": "worker",
+          "required": false,
+          "role": "backend",
+          "output": "backend_implementation",
+          "estimated_time": 120,
+          "dependencies": ["architecture.md", "MAINTASK.md"]
+        },
+        {
+          "step": 3,
+          "name": "测试开发",
+          "agent_type": "worker",
+          "required": false,
+          "role": "testing",
+          "output": "test_suite",
+          "estimated_time": 90,
+          "dependencies": ["frontend_implementation", "backend_implementation"]
+        }
+      ]
+    },
+    {
+      "phase": "review",
+      "name": "代码审核",
+      "steps": [
+        {
+          "step": 1,
+          "name": "自动化检查",
+          "agent_type": "system",
+          "required": true,
+          "output": "automated_check_report",
+          "estimated_time": 10,
+          "dependencies": ["frontend_implementation", "backend_implementation", "test_suite"]
+        },
+        {
+          "step": 2,
+          "name": "经理审核",
+          "agent_type": "manager",
+          "required": true,
+          "role": "quality",
+          "output": "manager_review_report",
+          "estimated_time": 30,
+          "dependencies": ["automated_check_report"]
+        },
+        {
+          "step": 3,
+          "name": "最终审核",
+          "agent_type": "brain",
+          "required": true,
+          "output": "final_approval",
+          "estimated_time": 20,
+          "dependencies": ["manager_review_report"]
+        }
+      ]
+    },
+    {
+      "phase": "deployment",
+      "name": "部署上线",
+      "steps": [
+        {
+          "step": 1,
+          "name": "部署准备",
+          "agent_type": "worker",
+          "required": false,
+          "role": "devops",
+          "output": "deployment_package",
+          "estimated_time": 30,
+          "dependencies": ["final_approval"]
+        },
+        {
+          "step": 2,
+          "name": "部署执行",
+          "agent_type": "system",
+          "required": true,
+          "output": "deployment_log",
+          "estimated_time": 15,
+          "dependencies": ["deployment_package"]
+        }
+      ]
+    }
+  ],
+  "quality_gates": {
+    "automated": {
+      "linting": true,
+      "security_scan": true,
+      "performance_check": false,
+      "test_coverage": true
+    },
+    "manual": {
+      "code_review": true,
+      "architecture_review": true,
+      "security_review": false
+    }
+  },
+  "rollback": {
+    "enabled": true,
+    "strategies": ["git_revert", "hotfix", "patch_release"]
+  }
+}

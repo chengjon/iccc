@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from litestar import Controller, delete, get, post, put
+from litestar.datastructures import State
 from litestar.di import Provide
 from litestar.exceptions import NotFoundException
 
@@ -10,14 +11,9 @@ from iccc.api.schemas import ErrorResponse, ProjectCreate, ProjectResponse, Proj
 from iccc.db.repositories import ProjectRepository
 
 
-async def provide_project_repo() -> ProjectRepository:
+async def provide_project_repo(state: State) -> ProjectRepository:
     """Dependency injection for ProjectRepository."""
-    from iccc.db.repositories import MongoDBClient
-
-    # Create database client and repository
-    db_client = MongoDBClient()
-    await db_client.connect()
-    return ProjectRepository(db_client)
+    return ProjectRepository(db_client=state.db_client)
 
 
 class ProjectController(Controller):

@@ -1,0 +1,133 @@
+{
+  "name": "bug_fix",
+  "description": "Bug修复工作流",
+  "version": "1.0",
+  "phases": [
+    {
+      "phase": "analysis",
+      "name": "问题分析",
+      "steps": [
+        {
+          "step": 1,
+          "name": "复现Bug",
+          "agent_type": "worker",
+          "role": "testing",
+          "required": true,
+          "output": "bug_reproduction_report",
+          "estimated_time": 20,
+          "dependencies": []
+        },
+        {
+          "step": 2,
+          "name": "根因分析",
+          "agent_type": "manager",
+          "role": "development",
+          "required": true,
+          "output": "root_cause_analysis",
+          "estimated_time": 30,
+          "dependencies": ["bug_reproduction_report"]
+        }
+      ]
+    },
+    {
+      "phase": "fix",
+      "name": "修复实施",
+      "steps": [
+        {
+          "step": 1,
+          "name": "编写失败测试",
+          "agent_type": "worker",
+          "role": "testing",
+          "required": false,
+          "output": "failing_test",
+          "estimated_time": 30,
+          "dependencies": ["root_cause_analysis"]
+        },
+        {
+          "step": 2,
+          "name": "实施修复",
+          "agent_type": "worker",
+          "role": "backend",
+          "required": true,
+          "output": "bug_fix",
+          "estimated_time": 60,
+          "dependencies": ["failing_test", "root_cause_analysis"]
+        }
+      ]
+    },
+    {
+      "phase": "verification",
+      "name": "验证测试",
+      "steps": [
+        {
+          "step": 1,
+          "name": "运行测试套件",
+          "agent_type": "system",
+          "required": true,
+          "output": "test_results",
+          "estimated_time": 15,
+          "dependencies": ["bug_fix"]
+        },
+        {
+          "step": 2,
+          "name": "回归测试",
+          "agent_type": "worker",
+          "role": "testing",
+          "required": true,
+          "output": "regression_test_report",
+          "estimated_time": 45,
+          "dependencies": ["test_results"]
+        }
+      ]
+    },
+    {
+      "phase": "review",
+      "name": "审核部署",
+      "steps": [
+        {
+          "step": 1,
+          "name": "代码审核",
+          "agent_type": "manager",
+          "role": "quality",
+          "required": true,
+          "output": "code_review_report",
+          "estimated_time": 30,
+          "dependencies": ["regression_test_report"]
+        },
+        {
+          "step": 2,
+          "name": "最终审核",
+          "agent_type": "brain",
+          "required": true,
+          "output": "final_approval",
+          "estimated_time": 15,
+          "dependencies": ["code_review_report"]
+        },
+        {
+          "step": 3,
+          "name": "热修复部署",
+          "agent_type": "system",
+          "required": false,
+          "output": "hotfix_deployment",
+          "estimated_time": 10,
+          "dependencies": ["final_approval"]
+        }
+      ]
+    }
+  ],
+  "quality_gates": {
+    "automated": {
+      "test_pass": true,
+      "no_regressions": true,
+      "security_check": true
+    },
+    "manual": {
+      "code_review": true,
+      "impact_assessment": true
+    }
+  },
+  "rollback": {
+    "enabled": true,
+    "strategies": ["git_revert", "hotfix_rollback"]
+  }
+}

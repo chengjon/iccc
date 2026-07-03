@@ -18,7 +18,7 @@ from iccc.api.app import create_app
 @pytest.fixture
 def client():
     """Create test client."""
-    app = create_app(enable_auth=False)
+    app = create_app(enable_auth=False, enable_rate_limit=False)
     with TestClient(app=app) as client:
         yield client
 
